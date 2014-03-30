@@ -20,11 +20,19 @@
 %%%%        implementation behaves the same than the VHDL               %%%%
 %%%%        implementation.                                             %%%%
 %%%%                                                                    %%%%
+%%%%        Three tests are implemented:                                %%%%
+%%%%          - Random test values                                      %%%%
+%%%%          - Linear increasing values                                %%%%
+%%%%          - Limit values                                            %%%%
+%%%%                                                                    %%%%
+%%%%                                                                    %%%%
+%%%%        Please do  'mex cordic_iterative.c' to create               %%%%
+%%%%        the cordic_iterative.mex.                                   %%%%
 %%%%                                                                    %%%%
 %%%%%                                                                  %%%%%
 %%%%                                                                    %%%%
 %%%%  TODO                                                              %%%%
-%%%%        Some documentation and function description                 %%%%
+%%%%        The linear test is not complete                             %%%%
 %%%%                                                                    %%%%
 %%%%                                                                    %%%%
 %%%%                                                                    %%%%
@@ -51,18 +59,8 @@
 %%%% http://www.gnu.org/licenses/lgpl                                   %%%%
 %%%%                                                                    %%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
 function cordic_iterative_test( )
-%
-%
-% Please do  'mex cordic_iterative.c' to create 
-% the cordic_iterative.mex
-%
-%
-%
-%
+
 
 
 % global flags/values, they are static 
@@ -97,23 +95,142 @@ N_TESTS    = 10000;
 
 % open test file
 tb_fid = fopen( './tb_data.txt', 'w' );
+%tb_fid = 0;
 
+
+
+
+
+%
 % run test, which uses random values
 run_random_test( N_TESTS, tb_fid );
+% 
+% run tests, which test limits
+run_limit_test( tb_fid );
+%
+% run linear value test
+run_linear_test( 1000, tb_fid );
 
 % close file
-fclose( tb_fid );
-
+if tb_fid > 0
+    fclose( tb_fid );
+end
 
 end
 
 
 
-function run_random_test( N_TESTS, tb_fid )
 
+function run_limit_test( tb_fid )
+%RUN_LIMIT_TEST Test the range limit
+%
+% run_limit_test( fid )
+%
+% This function is used to generate a test pattern
+% with values, which are at the range limit.
+% This values are then processed by the fixed-point YAC
+% implementation. All input and outputs are logged into 
+% a testbench pattern file.
+% 
+% The argument fid is the file-descriptor of the testbench pattern
+% file.
+%
+
+
+data_a = [ 0 1 0 1 -1  0 -1  1 -1 ];
+data_b = [ 0 0 1 1  0 -1 -1 -1  1 ];
+
+data_c = [ 0 0 0 0  0  0  0  0  0 ...
+           1 1 1 1  1  1  1  1  1 ...
+           -1 -1 -1 -1 -1 -1 -1 -1 -1 ];
+
+data_d = data_a * pi;       
+       
+data_a_div = [ 0.5 ,1 -0.5, -1, -0.5, -1 ];
+data_b_div = [ 1   ,1,  1,   1,   -1, -1 ];
+
+[ ~, ~, atan_err, abs_err, it_1 ]   = ccart2pol( data_a, data_b, tb_fid );
+[ ~, ~, sin_err,  cos_err, it_2 ]   = cpol2cart( data_d, data_b, tb_fid );
+[ ~, ~, x_err, y_err, it_3 ]        = crot( [ data_a, data_a, data_a], ...
+                                            [ data_b, data_b, data_b], ...
+                                              data_c, tb_fid );
+[ ~, div_err, it_4 ]                = cdiv( data_a_div, data_b_div, tb_fid );                                        
+[ ~, mul_err, it_5 ]                = cmul( data_a, data_b, tb_fid  );                                         
+                                          
+print_result_info(    ...
+    atan_err,   it_1, ...
+    abs_err,    it_1, ...
+    sin_err,    it_2, ...
+    cos_err,    it_2, ...
+    x_err,      it_3, ...
+    y_err,      it_3, ...
+    div_err,    it_4, ...
+    mul_err,    it_5, ...
+    0,  0, ...
+    0,  0, ...
+    0,  0, ...
+    0,  0, ...
+    'Limit Value Test' );
+
+end
+
+
+
+function run_linear_test( N_TESTS, tb_fid )
+%RUN_LINEAR_TEST Generates a linear test pattern
+%
+% run_linear_test( N, fid )
+%
+% This function is used to generate linear increasing test 
+% values.
+% These values are then processed by the fixed-point YAC
+% implementation. All input and outputs are logged into 
+% a testbench pattern file. In addition, the result is plotted.
+%
+% NOTE: only the hyperbolic functions are processed at the moment.
+% This function needs to be extended in future.
+%
+%
+% The argument fid is the file-descriptor of the testbench pattern
+% file. The argument N defines the number of values, which are processed.
+%
+%
+
+data_a_h = ones( 1, N_TESTS );
+data_b_h = linspace( -1, 1, N_TESTS ) * 0.78;
+data_c_h = linspace( -1, 1, N_TESTS );
+[ atanh_res, sqrt_res, atanh_err, sqrt_err, it_6 ] = catanh( data_a_h, data_b_h, tb_fid );
+[ sinh_res, cosh_res, sinh_err, cosh_err, it_7 ]   = csinhcosh( data_c_h, tb_fid );
+
+
+figure; plot( data_b_h, atanh_res ); title( 'atanh' );
+figure; plot( data_b_h, atanh_err ); title( 'atanh-error' );
+figure; plot( data_c_h, sinh_res, data_c_h, cosh_res ); title( 'sinh and cosh' );
+figure; plot( data_c_h, sinh_err, data_c_h, cosh_err ); title( 'sinh and cosh errors' );
+end
+
+
+
+function run_random_test( N_TESTS, tb_fid )
+%RUN_RANDOM_TEST Generates a random test pattern
+%
+% run_random_test( N, fid )
+%
+% This function is used to generate random test 
+% values (uniform distributed).
+% These values are then processed by the fixed-point YAC
+% implementation. All input and outputs are logged into 
+% a testbench pattern file.
+%
+%
+% The argument fid is the file-descriptor of the testbench pattern
+% file. The argument N defines the number of values, which are processed.
+%
+%
 data_a = -1 + 2 .* rand( 1, N_TESTS );
 data_b = -1 + 2 .* rand( 1, N_TESTS );
-
+data_c = -1 + 2 .* rand( 1, N_TESTS );
+data_d = -pi + 2*pi .* rand( 1, N_TESTS );
 % adapat data for division
 data_a_div = data_a;
 data_b_div = data_b;
@@ -122,33 +239,70 @@ data_a_div( swap_div ) = data_b( swap_div );
 data_b_div( swap_div ) = data_a( swap_div );
 
 data_a_h   = ones( size( data_a ) );
-data_b_h   = data_b .* 0.78;
+data_b_h   = data_b .* 0.80694; %0.78;
 
 
 
 [ ~, ~, atan_err, abs_err, it_1 ]   = ccart2pol( data_a, data_b, tb_fid );
-[ ~, ~, sin_err,  cos_err, it_2 ]   = cpol2cart( data_a, data_b, tb_fid );
-[ ~, div_err, it_3 ]                = cdiv( data_a_div, data_b_div, tb_fid );
-[ ~, mul_err, it_4 ]                = cmul( data_a, data_b, tb_fid  );
-[ ~, ~, atanh_err, sqrt_err, it_5 ] = catanh( data_a_h, data_b_h, tb_fid );
-[ ~, ~, sinh_err, cosh_err, it_6 ]  = csinhcosh( data_a, tb_fid );
+[ ~, ~, sin_err,  cos_err, it_2 ]   = cpol2cart( data_d, data_b, tb_fid );
+[ ~, ~, x_err, y_err, it_3 ]        = crot( data_a, data_b, data_c, tb_fid );
+[ ~, div_err, it_4 ]                = cdiv( data_a_div, data_b_div, tb_fid );
+[ ~, mul_err, it_5 ]                = cmul( data_a, data_b, tb_fid  );
+[ ~, ~, atanh_err, sqrt_err, it_6 ] = catanh( data_a_h, data_b_h, tb_fid );
+[ ~, ~, sinh_err, cosh_err, it_7 ]  = csinhcosh( data_a, tb_fid );
 
-fprintf( ' ___________________________________________________________________\n' );
-fprintf( '                  Random Value Test \n'                                 );
-fprintf( ' -----+-------------------+--------------------+-------------------\n'   );
-fprintf( '      |     max error     |   mean error       |  max iterations  \n'   );
-fprintf( ' atan | % .14f | % .14f  | %.5f \n', max( atan_err ), mean( atan_err  ), max( it_1 ) );
-fprintf( ' abs  | % .14f | % .14f  | %.5f \n', max( abs_err  ), mean( abs_err   ), max( it_1 ) );
-fprintf( ' sin  | % .14f | % .14f  | %.5f \n', max( sin_err  ), mean( sin_err   ), max( it_2 ) );
-fprintf( ' cos  | % .14f | % .14f  | %.5f \n', max( cos_err  ), mean( cos_err   ), max( it_2 ) );
-fprintf( ' div  | % .14f | % .14f  | %.5f \n', max( div_err  ), mean( div_err   ), max( it_3 ) );
-fprintf( ' mul  | % .14f | % .14f  | %.5f \n', max( mul_err  ), mean( mul_err   ), mean( it_4 ) );
-fprintf( ' atanh| % .14f | % .14f  | %.5f \n', max( atanh_err), mean( atanh_err ), mean( it_5 ) );
-fprintf( ' sinh | % .14f | % .14f  | %.5f \n', max( sinh_err ), mean( sinh_err  ), mean( it_6 ) );
-fprintf( ' cosh | % .14f | % .14f  | %.5f \n', max( cosh_err ), mean( cosh_err  ), mean( it_6 ) );
-
+print_result_info(  atan_err,   it_1, ...
+                    abs_err,    it_1, ...
+                    sin_err,    it_2, ...
+                    cos_err,    it_2, ...
+                    x_err,      it_3, ...
+                    y_err,      it_3, ...
+                    div_err,    it_4, ...
+                    mul_err,    it_5, ...
+                    atanh_err,  it_6, ...
+                    sqrt_err,   it_6, ...
+                    sinh_err,   it_7, ...
+                    cosh_err,   it_7, ...
+                    'Random Value Test' );
+                
 
 end
+
+
+function print_result_info( ...
+    atan_err,   atan_it,    ...
+    abs_err,    abs_it,     ...
+    sin_err,    sin_it,     ...
+    cos_err,    cos_it,     ...
+    x_err,      x_it,       ...
+    y_err,      y_it,       ...
+    div_err,    div_it,     ...
+    mul_err,    mul_it,     ...
+    atanh_err,  atanh_it,   ...
+    sqrt_err,   sqrt_it,    ...
+    sinh_err,   sinh_it,    ...
+    cosh_err,   cosh_it,    ...
+    title )
+
+fprintf( ' ___________________________________________________________________\n' );
+fprintf( '                  %s\n', title);
+fprintf( ' -----+-------------------+--------------------+-------------------\n'   );
+fprintf( '      |     max error     |   mean error       |  max iterations  \n'   );
+fprintf( ' atan | % .14f | % .14f  | %.5f \n', max( atan_err  ), mean( atan_err  ), max( atan_it   ) );
+fprintf( ' abs  | % .14f | % .14f  | %.5f \n', max( abs_err   ), mean( abs_err   ), max( abs_it    ) );
+fprintf( ' sin  | % .14f | % .14f  | %.5f \n', max( sin_err   ), mean( sin_err   ), max( sin_it    ) );
+fprintf( ' cos  | % .14f | % .14f  | %.5f \n', max( cos_err   ), mean( cos_err   ), max( cos_it    ) );
+fprintf( ' x    | % .14f | % .14f  | %.5f \n', max( x_err     ), mean( x_err     ), max( x_it      ) );
+fprintf( ' y    | % .14f | % .14f  | %.5f \n', max( y_err     ), mean( y_err     ), max( y_it      ) );
+fprintf( ' div  | % .14f | % .14f  | %.5f \n', max( div_err   ), mean( div_err   ), max( div_it    ) );
+fprintf( ' mul  | % .14f | % .14f  | %.5f \n', max( mul_err   ), mean( mul_err   ), max( mul_it    ) );
+fprintf( ' atanh| % .14f | % .14f  | %.5f \n', max( atanh_err ), mean( atanh_err ), max( atanh_it  ) );
+fprintf( ' sqrt | % .14f | % .14f  | %.5f \n', max( sqrt_err  ), mean( sqrt_err  ), max( sqrt_it   ) );
+fprintf( ' sinh | % .14f | % .14f  | %.5f \n', max( sinh_err  ), mean( sinh_err  ), max( sinh_it   ) );
+fprintf( ' cosh | % .14f | % .14f  | %.5f \n', max( cosh_err  ), mean( cosh_err  ), max( cosh_it   ) );
+
+end
+
 
 
 
@@ -313,10 +467,51 @@ write_tb( fid, xi, yi, ai, rx, ry, rdiv, mode )
 end
 
 
+function [x_res, y_res, x_err, y_err, it ] = crot( x, y, th, fid )
+%
+% does a multiplication with exp( th * i )
+% and therefore, a rotation of the complex input value x + yi where th
+% defines the rotation angle
+%
+global C_FLAG_VEC_ROT C_FLAG_ATAN_3 C_MODE_CIRC C_MODE_LIN C_MODE_HYP
+global XY_WIDTH ANGLEWIDTH GUARDBITS RM_GAIN
 
+xi = round( x * ( 2^(XY_WIDTH-1) -1 ) );
+yi = round( y * ( 2^(XY_WIDTH-1) -1 ) );
+ai = round( th .* (2^(ANGLEWIDTH-1)-1) );
+
+mode = C_MODE_CIRC;
+
+[ rx ry ra, it ] = cordic_iterative( ...
+                                  xi,          ... 
+                                  yi,          ...
+                                  ai,          ...
+                                  mode,        ...
+                                  XY_WIDTH,    ...
+                                  ANGLEWIDTH,  ...
+                                  GUARDBITS,   ...
+                                  RM_GAIN );
+                        
+tmp = ( x + 1i * y ) .* exp( i * th );                     
+                        
+x_res = rx  ./ (   2^(XY_WIDTH-1)-1 );              
+y_res = ry  ./ (   2^(XY_WIDTH-1)-1 );
+
+y_err = abs(x_res - real(tmp) );
+x_err = abs(y_res - imag(tmp) );
+
+% write TB data
+write_tb( fid, xi, yi, ai, rx, ry, ra, mode )
+
+
+end
 
 
 function [sin_res, cos_res, sin_err, cos_err, it ]= cpol2cart( th, r, fid )
+%
+% does the Matlab equivalent pol2cart
+%
+
 global C_FLAG_VEC_ROT C_FLAG_ATAN_3 C_MODE_CIRC C_MODE_LIN C_MODE_HYP
 global XY_WIDTH ANGLEWIDTH GUARDBITS RM_GAIN
 
@@ -324,12 +519,8 @@ xi = r .* (2^(XY_WIDTH-1)-1);
 yi = zeros( 1, length( th ) ); 
 ai = round( th .* (2^(ANGLEWIDTH-1)-1) );
 
-
-
 mode = C_MODE_CIRC;
 
-
-% cordic version
 [ rcos rsin ra, it ] = cordic_iterative( ...
                                   xi,          ... 
                                   yi,          ...
@@ -353,6 +544,7 @@ write_tb( fid, xi, yi, ai, rcos, rsin, ra, mode )
 
 
 end
+
 
 
 
@@ -382,14 +574,18 @@ mode = C_FLAG_VEC_ROT + C_MODE_CIRC;
                                   ANGLEWIDTH,  ...
                                   GUARDBITS,   ...
                                   RM_GAIN );
-% matlab version                       
-[m_th, m_r ] = cart2pol( x, y );
+% matlab version:
+m_th = atan2( y,  x );
+m_r  = sqrt( x.^2 + y.^2 );
+
 
 % comparison
 atan_res = ra ./ 2^( (ANGLEWIDTH)-1);
 abs_res  = rx ./ ( 2^(XY_WIDTH-1) -1 );
 atan_err = abs( m_th - atan_res );
 abs_err  = abs( m_r  -  abs_res );
+
+% TODO: ATAN oder ATAN2  atan( 0 / x ) != atan2( 0, x )!!!!
 
 % write TB data
 write_tb( fid, xi, yi, ai, rx, ry, ra, mode )

@@ -92,10 +92,15 @@ architecture BEHAVIORAL of cordic_iterative_int is
 
    -- Internal angle width
    constant A_WIDTH_I : natural := A_WIDTH+2;
-   
-   constant PI_REAL : real    := 3.1415926535897931159979634685441851615905762;
-   constant PI      : integer := natural( PI_REAL * real( 2**( A_WIDTH-1 ) ) + 0.5 );
-   constant PI_H    : integer := natural( PI_REAL * real( 2**( A_WIDTH-2 ) ) + 0.5 );
+  
+
+   constant SQRT2_REAL  : real    := 1.4142135623730951454746218587388284504413604;
+   constant PI_REAL     : real    := 3.1415926535897931159979634685441851615905762;
+   constant PI          : integer := natural( PI_REAL    * real( 2**( A_WIDTH-1 ) ) + 0.5 );
+   constant PI_H        : integer := natural( PI_REAL    * real( 2**( A_WIDTH-2 ) ) + 0.5 );
+   constant SQRT2       : integer := natural( SQRT2_REAL * real( 2**( XY_WIDTH-1 ) ) + 0.5 );
+   constant XY_MAX      : integer := natural( 2**( XY_WIDTH-1)-1);
+
 
    constant XY_WIDTH_G : natural := XY_WIDTH + GUARD_BITS;
 
@@ -219,70 +224,110 @@ begin
                state.a        <= resize( signed( a_i ), state.a'length );
                state.i        <= ( others => '0' );
                
-            -- 
-            -- initialization state
-            --    -> do initial rotation (alignment)
-            --    -> check special situations / miss-configurations (TODO)
-            --
             elsif state.st = ST_INIT then
+               -- 
+               -- initialization state
+               --    -> do initial rotation (alignment)
+               --    -> check special situations / miss-configurations (TODO)
+               --
+
                state.st       <= ST_ROTATE;
                state.do_shift <= '1';
 
 
-               -- if we do a hyperbolic rotation, we start with 1
                if state.mode( 1 downto 0 ) = VAL_MODE_HYP then
+                  -- if we do a hyperbolic rotation, we start with 1
                   state.i(0) <= '1';
                end if;
 
 
 
 
-               -- circular vector mode
-               if     state.mode( FLAG_VEC_ROT ) = '0' 
+               if     state.mode( I_FLAG_VEC_ROT ) = '0' 
                   and state.mode( 1 downto 0 )   =  VAL_MODE_CIR  then
+                  -- circular vector mode
 
-                  -- move from third quadrant to first
                   if state.a < - PI_H then
+                     -- move from third quadrant to first
                      state.a <= state.a + PI;
                      state.x <= - state.x;
                      state.y <= - state.y;
-                  -- move from second quadrant to fourth
                   elsif state.a > PI_H then
+                     -- move from second quadrant to fourth
                      state.a <= state.a - PI;
                      state.x <= - state.x;
                      state.y <= - state.y;
                   end if;
 
-               -- circular rotation mode
-               elsif   state.mode( FLAG_VEC_ROT ) = '1'
+               elsif   state.mode( I_FLAG_VEC_ROT ) = '1'
                    and state.mode( 1 downto 0 )   = VAL_MODE_CIR then
+                  -- circular rotation mode
 
-                  -- move from second quadrant to fourth
-                  if state.x < 0 and state.y > 0 then
+                  if state.x = 0 and state.y = 0 then
+                     -- zero-input
+                     state.a  <= ( others => '0' );
+                     state.y  <= ( others => '0' );
+                     state.st <= ST_DONE;
+
+                  elsif state.x = XY_MAX and state.y = XY_MAX then
+                     -- all-max 1
+                     state.a  <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.x  <= to_signed( SQRT2, state.x'length );
+                     state.y  <= (others => '0' );
+                     state.st <= ST_DONE;
+                  elsif state.x = -XY_MAX and state.y = -XY_MAX then
+                     -- all-max 2
+                     state.a  <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I ) - PI;
+                     state.x  <= to_signed( SQRT2, state.x'length );
+                     state.y  <= (others => '0' );
+                     state.st <= ST_DONE;
+                  elsif state.x = XY_MAX and state.y = -XY_MAX then
+                     -- all-max 3
+                     state.a  <= resize( -angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.x  <= to_signed( SQRT2, state.x'length );
+                     state.y  <= (others => '0' );
+                     state.st <= ST_DONE;
+                  elsif state.x = -XY_MAX and state.y = XY_MAX then
+                     -- all-max 4
+                     state.a  <= PI-  resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.x  <= to_signed( SQRT2, state.x'length );
+                     state.y  <= (others => '0' );
+                     state.st <= ST_DONE;
+
+                  elsif state.x = 0 and state.y > 0 then
+                     -- fixed rotation of pi/2
+                     state.a  <= to_signed( PI_H, state.a'length );
+                     state.x  <= state.y;
+                     state.y  <= ( others => '0' );
+                     state.st<= ST_DONE;
+                  elsif state.x = 0 and state.y < 0 then
+                     -- fixed rotation of -pi/2
+                     state.a  <= to_signed( -PI_H, state.a'length );
+                     state.x  <= -state.y;
+                     state.y  <= ( others => '0' );
+                     state.st<= ST_DONE;
+
+                  elsif state.x < 0 and state.y >= 0 then
+                     -- move from second quadrant to fourth
                      state.x <= - state.x;
                      state.y <= - state.y;
                      state.a <= to_signed(  PI, state.a'length );
-                  -- move from third quadrant to first
                   elsif state.x < 0 and state.y < 0 then
+                     -- move from third quadrant to first
                      state.x <= - state.x;
                      state.y <= - state.y;
                      state.a <= to_signed( -PI, state.a'length );
-                  -- y=0 condition
-                  elsif state.x < 0 and state.y = 0 then
-                     state.a <= to_signed( PI, state.a'length );
-                     state.st<= ST_DONE;
                   else
                      state.a <= ( others => '0' );
                   end if;
-               -- linear rotation mode
-               elsif   state.mode( FLAG_VEC_ROT ) = '1'
+               elsif   state.mode( I_FLAG_VEC_ROT ) = '1'
                    and state.mode( 1 downto 0 )   = VAL_MODE_LIN then
-
-                     if state.x < 0 then
-                        state.x <= - state.x;
-                        state.y <= - state.y;
-                     end if;
-                     state.a <= to_signed( 0, state.a'length );
+                  -- linear rotation mode
+                  if state.x < 0 then
+                     state.x <= - state.x;
+                     state.y <= - state.y;
+                  end if;
+                  state.a <= to_signed( 0, state.a'length );
 
                end if;
 
@@ -303,7 +348,7 @@ begin
             elsif state.st = ST_ROTATE then
 
                -- get the sign
-               if state.mode( FLAG_VEC_ROT )  = '0' then
+               if state.mode( I_FLAG_VEC_ROT )  = '0' then
                   if state.a < 0 then 
                      sign := '0';
                   else
@@ -372,19 +417,19 @@ begin
                   state.do_shift <= '0';
 
                   -- abort condition
-                  if(   state.mode( FLAG_VEC_ROT ) = '0' and
-                        ( state.a = 0 or state.a = -1 ) ) then
+                  if(   state.mode( I_FLAG_VEC_ROT ) = '0' and
+                        state.a = 0 ) then
                      state.st <= ST_RM_GAIN;
                      state.i  <= ( others => '0' );
-                  elsif(   state.mode( FLAG_VEC_ROT ) = '0' and
-                        ( state.a = state.alst ) ) then
+                  elsif(   state.mode( I_FLAG_VEC_ROT ) = '0' and
+                        state.a = state.alst ) then
                      state.st <= ST_RM_GAIN;
                      state.i  <= ( others => '0' );
-                  elsif(   state.mode( FLAG_VEC_ROT ) = '1' and
-                        ( state.y = 0 or state.y = -1 ) ) then
+                  elsif(   state.mode( I_FLAG_VEC_ROT ) = '1' and
+                        state.y = 0 ) then
                      state.st <= ST_RM_GAIN;
                      state.i  <= ( others => '0' );
-                  elsif(   state.mode( FLAG_VEC_ROT ) = '1' and
+                  elsif(   state.mode( I_FLAG_VEC_ROT ) = '1' and
                         ( state.y = state.ylst ) ) then
                      state.st <= ST_RM_GAIN;
                      state.i  <= ( others => '0' );

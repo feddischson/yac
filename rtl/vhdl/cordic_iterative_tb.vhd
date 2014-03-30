@@ -251,15 +251,15 @@ begin
            y_ex /= y_o or
            a_ex /= a_o then
            assert x_ex = x_o report 
-                   " Serial Cordic Failed: expected x result:" 
+                 integer'image( stim_cnt ) & ": Serial Cordic Failed: expected x result:" 
                  & integer'image( tmp_value(5) ) & ", but got:" 
                  & integer'image( to_integer( signed( x_ex ) ) );
            assert y_ex = y_o report 
-                   " Serial Cordic Failed: expected y result:" 
+                 integer'image( stim_cnt ) &   ": Serial Cordic Failed: expected y result:" 
                  & integer'image( tmp_value(6) ) & ", but got:" 
                  & integer'image( to_integer( signed( y_ex ) ) );
            assert a_ex = a_o report 
-                   " Serial Cordic Failed: expected a result:" 
+                 integer'image( stim_cnt ) &   ": Serial Cordic Failed: expected a result:" 
                  & integer'image( tmp_value(7) ) & ", but got:" 
                  & integer'image( to_integer( signed( a_ex ) ) );
             err_cnt := err_cnt + 1;

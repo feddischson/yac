@@ -61,8 +61,8 @@ package cordic_pkg is
 
    
    
-   constant FLAG_VEC_ROT      : natural :=  3;  -- bit index
-   constant FLAG_ATAN_3       : natural :=  2;  -- bit index
+   constant I_FLAG_VEC_ROT      : natural :=  3;  -- bit index
+   constant I_FLAG_ATAN_3       : natural :=  2;  -- bit index (for future usage)
    constant VAL_MODE_CIR      : std_logic_vector( 1 downto 0 ) :=  "00";  -- value
    constant VAL_MODE_LIN      : std_logic_vector( 1 downto 0 ) :=  "01";  -- value
    constant VAL_MODE_HYP      : std_logic_vector( 1 downto 0 ) :=  "10";  -- value

@@ -59,7 +59,7 @@
 #include "mex.h"
 
 /* enable debug output */
-#define PRINT_DEBUG  0
+#define PRINT_DEBUG        0
 
 
 /* #define CORDIC_ROUNDING    0.5 */
@@ -77,21 +77,6 @@
 
 
 #define PRINT  mexPrintf
-
-
-
-
-long long int ov_check( long long int * value, long long int length )
-{
-   long long int mask = (1<<length)-1;
-   long long int result = 0;
-   long long int min = -((long long int)1<<length);
-   long long int max =  ((long long int)1<<length);
-   if( *value > max || *value < min )
-       result = *value;
-   /* *value &= mask; */
-   return result;
-}
 
 
 
@@ -117,7 +102,8 @@ int            cordic_int_init   ( long long int *x,
                                    long long int *y,
                                    long long int *a,
                                    int           mode, 
-                                   int           A_WIDTH );
+                                   int           A_WIDTH, 
+                                   int           XY_WIDTH );
 void           cordic_int_rm_gain( long long int *x, 
                                    long long int *y,
                                    int           mode,
@@ -246,7 +232,7 @@ void cordic_int( long long int   x_i,
    long long int a;
    long long int s;
    int ov;
-   int it;
+   int it = 0;
 
 
    
@@ -256,12 +242,13 @@ void cordic_int( long long int   x_i,
    
    cordic_int_dbg( x_i, y_i, a_i, mode, 0, "input" );
 
-   cordic_int_init( &x_i, &y_i, &a_i, mode, A_WIDTH );
+   if( !cordic_int_init( &x_i, &y_i, &a_i, mode, A_WIDTH, XY_WIDTH ) )
+   {
 
-   it = cordic_int_rotate( &x_i, &y_i, &a_i, mode, A_WIDTH );
+      it = cordic_int_rotate( &x_i, &y_i, &a_i, mode, A_WIDTH );
 
-   cordic_int_rm_gain( &x_i, &y_i, mode, RM_GAIN );
-
+      cordic_int_rm_gain( &x_i, &y_i, mode, RM_GAIN );
+   }
 
    *x_o  = x_i;
    *y_o  = y_i;
@@ -280,16 +267,20 @@ int cordic_int_init( long long int *x,
                      long long int *y,
                      long long int *a,
                      int           mode,
-                     int           A_WIDTH )
+                     int           A_WIDTH,
+                     int           XY_WIDTH )
 {
    int already_done = 0;
 
 
    long long int PI   = ( long long int )( M_PI * pow( 2, A_WIDTH-1 ) + 0.5 );
    long long int PI_H = (long long int)(  M_PI * pow( 2, A_WIDTH-2 ) + 0.5  );
-   
+  
+   long long int XY_MAX = pow( 2, XY_WIDTH-1 )-1;
    
    cordic_int_dbg( *x, *y, *a, mode, 0, "before init" );
+
+
    /* Circular rotation mode */
    if( 0          == ( mode &  C_FLAG_VEC_ROT )    &&
        C_MODE_CIR == ( mode &  C_MODE_MSK     )  )
@@ -324,28 +315,91 @@ int cordic_int_init( long long int *x,
    else if ( 0          != ( mode &  C_FLAG_VEC_ROT )    &&
              C_MODE_CIR == ( mode &  C_MODE_MSK     )  )
    {
-      if( *x < 0 && *y > 0 )
+
+      if( *x == 0 && *y == 0 )
+      {
+         already_done = 1;
+         *a = 0;
+         #if PRINT_DEBUG > 0
+         PRINT( "Zero input, skipping rotations \n" );
+         #endif
+      }
+      else if( *x == XY_MAX && *y == XY_MAX )
+      {
+         #if PRINT_DEBUG > 0
+         PRINT( "All max, skipping rotations 1\n" );
+         #endif
+         *a = cordic_int_lut( mode, 0, A_WIDTH );
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
+         already_done = 1;
+      }
+      else if( *x == -XY_MAX && *y == -XY_MAX )
+      {
+         #if PRINT_DEBUG > 0
+         PRINT( "All max, skipping rotations 2\n" );
+         #endif
+         *a = cordic_int_lut( mode, 0, A_WIDTH ) - PI;
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
+         already_done = 1;
+      }
+      else if( *x ==  XY_MAX && *y == -XY_MAX )
+      {
+         #if PRINT_DEBUG > 0
+         PRINT( "All max, skipping rotations 3\n" );
+         #endif
+         *a = -cordic_int_lut( mode, 0, A_WIDTH );
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
+         already_done = 1;
+      }
+      else if( *x == -XY_MAX && *y ==  XY_MAX )
+      {
+         #if PRINT_DEBUG > 0
+         PRINT( "All max, skipping rotations 4\n" );
+         #endif
+         *a = PI - cordic_int_lut( mode, 0, A_WIDTH );
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
+         already_done = 1;
+      }
+
+
+
+      else if( *x == 0 && *y > 0 ) 
+      {
+         *a = PI_H;
+         *x = *y;
+         already_done = 1;
+         #if PRINT_DEBUG > 0
+         PRINT( "Fixed value of pi/2, skipping rotations" );
+         #endif
+         *y = 0;
+      }
+      else if( *x == 0 && *y < 0 ) 
+      {
+         *a = -PI_H;
+         *x = -*y;
+         *y = 0;
+         already_done = 1;
+         #if PRINT_DEBUG > 0
+         PRINT( "Fixed value of -pi/2, skipping rotations" );
+         #endif
+      }
+      else if( *x < 0  && *y >= 0 )
       {
          *x = -*x;
          *y = -*y;
          *a =  PI;
           #if PRINT_DEBUG > 0
-          PRINT("align from second quadrand\n" );
+          PRINT("pre-rotation from second to the fourth quadrant\n" );
           #endif
       }
-      else if( *x < 0 && *y < 0 )
+      else if( *x < 0 && *y <  0 )
       {
          *x = -*x;
          *y = -*y;
          *a = -PI;
           #if PRINT_DEBUG > 0
-          PRINT("align from third quadrand\n" );
+          PRINT("pre-rotation from third to first quadrand\n" );
           #endif
-      }
-      else if( *x < 0 && *y == 0 )
-      {
-         *a           = PI;
-         already_done = 1;
       }
       else
          *a = 0;
@@ -363,7 +417,7 @@ int cordic_int_init( long long int *x,
    }
 
    cordic_int_dbg( *x, *y, *a, mode, 0, "after init" );
-   
+   return already_done; 
 }
 
 
@@ -480,14 +534,14 @@ int cordic_int_rotate( long long int * x,
       
       /* abort condition */
       if( ( mode & C_FLAG_VEC_ROT  ) == 0 && 
-          ( *a == 0 || *a == -1 ) )
+          ( *a == 0 /* || *a == -1 */ ) )
           break;
       if( ( mode & C_FLAG_VEC_ROT  ) == 0 && 
           ( *a == alst ) )
           break;
       
       if( ( mode & C_FLAG_VEC_ROT  ) != 0 && 
-          ( *y == 0 || *y == -1 ) )
+          ( *y == 0 /*|| *y == -1 */ ) )
           break;
       if( ( mode & C_FLAG_VEC_ROT  ) != 0 && 
           ( *y == ylst ) )

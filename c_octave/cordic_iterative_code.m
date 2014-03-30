@@ -68,6 +68,8 @@ fid = fopen( outfile, 'w' );
 % TODO: calculate these values
 K0 = 0.607252935009;
 K1 = 0.207497067763;
+%prod( sqrt( 1-2.^(-2 .* [ 1 : 100000 ] ) ) )
+
 
 signs = get_rm_gain_shifts( K0, 30 );
 print_rm_gain_code( fid, signs, K0, 1, 1, 0 );
@@ -82,7 +84,7 @@ signs = get_rm_gain_shifts( K1, 30 );
 print_rm_gain_code( fid, signs, K1, 1, 0, 1 );
 
 MAX_A_WIDTH = 32;
-print_angular_lut( fid, MAX_A_WIDTH )
+print_angular_lut( fid, MAX_A_WIDTH );
 
 
 fclose( fid );
@@ -193,7 +195,7 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
                 end
                 
                 for y = 1 : length( tmp2 )
-                    fprintf( fid,  '%c ( x >> %d ) ', tmp2{ y }, index( y ) )   
+                    fprintf( fid,  '%c ( x >> %d ) ', tmp2{ y }, index( y ) );
                 end
                 fprintf( fid,  '; break; /* error: %.10f */ \n', err );
             else
