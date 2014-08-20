@@ -42,7 +42,7 @@ subtractions in combination with table-lookup is required. This makes
 it suitable for a realization in digital hardware. Good 
 introductions can be found in [1][2][3][5]. 
 
- 
+
 
 The following six CORDIC modes are supported: 
 - trigonometric rotation
@@ -76,17 +76,17 @@ Status
 - C-model implementation is done
 - RTL model implementation is done
 - RTL model is verified against C-model
-
+- Wishbone-bus wrapper is added
+- included into a small SoC, tested on a spartan-3 FPGA
 
 
 
 
 Next-Steps
 -----------------------
-- Prove of FPGA feasibility
 - Circuit optimizations
 - Numerical optimizations
-
+- Further testing within an SOC
 
 
 
