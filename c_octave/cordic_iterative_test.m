@@ -69,36 +69,13 @@ global C_FLAG_VEC_ROT C_FLAG_ATAN_3 C_MODE_CIRC C_MODE_LIN C_MODE_HYP
 global XY_WIDTH ANGLEWIDTH GUARDBITS RM_GAIN
 
 
-%
-% flags: they are also define in cordic_iterative.c and
-%        cordic_iterative_pkg.vhd
-C_FLAG_VEC_ROT  = 2^3;
-C_FLAG_ATAN_3   = 2^2;
-C_MODE_CIRC     = 0;
-C_MODE_LIN      = 1;
-C_MODE_HYP      = 2;
+cordic_iterative_setup
 
-% initialize the random-generator's seed
-rand('seed', 1633);
-
-
-% cordic setup: 
-% this must fit to the testbench
-XY_WIDTH   = 25;
-ANGLEWIDTH = 25;
-GUARDBITS  = 2;
-RM_GAIN    = 5;
-
+% open output file
+tb_fid = fopen( TB_FILE, 'w' );
 
 % Number of tests, which are run
 N_TESTS    = 10000;
-
-% open test file
-tb_fid = fopen( './tb_data.txt', 'w' );
-%tb_fid = 0;
-
-
-
 
 
 %
@@ -145,7 +122,7 @@ data_c = [ 0 0 0 0  0  0  0  0  0 ...
            -1 -1 -1 -1 -1 -1 -1 -1 -1 ];
 
 data_d = data_a * pi;       
-       
+
 data_a_div = [ 0.5 ,1 -0.5, -1, -0.5, -1 ];
 data_b_div = [ 1   ,1,  1,   1,   -1, -1 ];
 
@@ -156,8 +133,8 @@ data_b_div = [ 1   ,1,  1,   1,   -1, -1 ];
                                               data_c, tb_fid );
 [ ~, div_err, it_4 ]                = cdiv( data_a_div, data_b_div, tb_fid );                                        
 [ ~, mul_err, it_5 ]                = cmul( data_a, data_b, tb_fid  );                                         
-                                          
-print_result_info(    ...
+
+print_result(    ...
     atan_err,   it_1, ...
     abs_err,    it_1, ...
     sin_err,    it_2, ...
@@ -207,6 +184,8 @@ figure; plot( data_b_h, atanh_res ); title( 'atanh' );
 figure; plot( data_b_h, atanh_err ); title( 'atanh-error' );
 figure; plot( data_c_h, sinh_res, data_c_h, cosh_res ); title( 'sinh and cosh' );
 figure; plot( data_c_h, sinh_err, data_c_h, cosh_err ); title( 'sinh and cosh errors' );
+
+
 end
 
 
@@ -251,25 +230,47 @@ data_b_h   = data_b .* 0.80694; %0.78;
 [ ~, ~, atanh_err, sqrt_err, it_6 ] = catanh( data_a_h, data_b_h, tb_fid );
 [ ~, ~, sinh_err, cosh_err, it_7 ]  = csinhcosh( data_a, tb_fid );
 
-print_result_info(  atan_err,   it_1, ...
-                    abs_err,    it_1, ...
-                    sin_err,    it_2, ...
-                    cos_err,    it_2, ...
-                    x_err,      it_3, ...
-                    y_err,      it_3, ...
-                    div_err,    it_4, ...
-                    mul_err,    it_5, ...
-                    atanh_err,  it_6, ...
-                    sqrt_err,   it_6, ...
-                    sinh_err,   it_7, ...
-                    cosh_err,   it_7, ...
-                    'Random Value Test' );
-                
+
+print_result_header( 'Random Test Result' );
+print_result2( 'atan', it_1, atan_err, data_a, data_b );
+print_result2( 'abs ', it_1, abs_err,  data_a, data_b );
+print_result2( 'sin ', it_2, sin_err,  data_a, data_b );
+print_result2( 'cos ', it_2, cos_err,  data_a, data_b );
+
+
+
+print_result(  atan_err,   it_1, ...
+               abs_err,    it_1, ...
+               sin_err,    it_2, ...
+               cos_err,    it_2, ...
+               x_err,      it_3, ...
+               y_err,      it_3, ...
+               div_err,    it_4, ...
+               mul_err,    it_5, ...
+               atanh_err,  it_6, ...
+               sqrt_err,   it_6, ...
+               sinh_err,   it_7, ...
+               cosh_err,   it_7, ...
+               'Random Value Test' );
+
+
+end
+
+function print_result_header( title )
+ printf( ' ___________________________________________________________________\n' );
+ fprintf( '                  %s\n', title);
+ fprintf( ' -----+-------------------+--------------------+-------------------\n'   );
+end
+
+function print_result2( msg, it, err, a, b )
+
+[ verr, ierr ] = max( err );
+fprintf( '%s |  %.14f  | (%.14f %.14f) | %.14f  | %.5f \n', msg, verr, a( ierr ), b( ierr ), mean( err ), max( it ) ) 
 
 end
 
 
-function print_result_info( ...
+function print_result( ...
     atan_err,   atan_it,    ...
     abs_err,    abs_it,     ...
     sin_err,    sin_it,     ...
@@ -301,9 +302,9 @@ fprintf( ' sqrt | % .14f | % .14f  | %.5f \n', max( sqrt_err  ), mean( sqrt_err 
 fprintf( ' sinh | % .14f | % .14f  | %.5f \n', max( sinh_err  ), mean( sinh_err  ), max( sinh_it   ) );
 fprintf( ' cosh | % .14f | % .14f  | %.5f \n', max( cosh_err  ), mean( cosh_err  ), max( cosh_it   ) );
 
+
+
 end
-
-
 
 
 
@@ -330,9 +331,9 @@ mode = C_MODE_HYP;
                                            ANGLEWIDTH,  ...
                                            GUARDBITS,   ...
                                            RM_GAIN );
-                        
-                        
-                        
+
+
+
 cosh_res = rcosh  ./ (   2^(XY_WIDTH-1)-1 );              
 sinh_res = rsinh  ./ (   2^(XY_WIDTH-1)-1 );
 cosh_m = cosh( th );
@@ -340,7 +341,7 @@ sinh_m = sinh( th );
 sinh_err = abs(sinh_res - sinh_m );
 cosh_err = abs(cosh_res - cosh_m );
 
-      
+
 % write TB data
 write_tb( fid, xi, yi, ai, rcosh, rsinh, ra, mode );
 
@@ -384,7 +385,7 @@ atan_res = ra ./ 2^( (ANGLEWIDTH)-1);
 abs_res  = rx ./ ( 2^(XY_WIDTH-1) -1 );
 atan_err = abs( m_th - atan_res );
 abs_err  = abs( m_r  -  abs_res );
-      
+
 % write TB data
 write_tb( fid, xi, yi, ai, rx, ry, ra, mode );
 
@@ -418,8 +419,8 @@ mode = C_MODE_LIN;
                                         ANGLEWIDTH,  ...
                                         GUARDBITS,   ...
                                         RM_GAIN );
-                        
-                        
+
+
 mul_res  = rmul ./ (2^(ANGLEWIDTH-1)-1);
 mul_err  = abs( y.*x -  mul_res );
 
@@ -456,8 +457,8 @@ mode = C_FLAG_VEC_ROT + C_MODE_LIN;
                                   ANGLEWIDTH,  ...
                                   GUARDBITS,   ...
                                   RM_GAIN );
-                        
-                        
+
+
 div_res  = rdiv ./ (2^(ANGLEWIDTH-1)-1);
 div_err  = abs( y./x -  div_res );
 
@@ -491,9 +492,9 @@ mode = C_MODE_CIRC;
                                   ANGLEWIDTH,  ...
                                   GUARDBITS,   ...
                                   RM_GAIN );
-                        
+
 tmp = ( x + 1i * y ) .* exp( i * th );                     
-                        
+
 x_res = rx  ./ (   2^(XY_WIDTH-1)-1 );              
 y_res = ry  ./ (   2^(XY_WIDTH-1)-1 );
 
@@ -530,9 +531,9 @@ mode = C_MODE_CIRC;
                                   ANGLEWIDTH,  ...
                                   GUARDBITS,   ...
                                   RM_GAIN );
-                        
-                        
-                        
+
+
+
 cos_res = rcos  ./ (   2^(XY_WIDTH-1)-1 );              
 sin_res = rsin  ./ (   2^(XY_WIDTH-1)-1 );
 [ cos_m, sin_m ] = pol2cart( th, r );
@@ -560,7 +561,6 @@ end
 ai = zeros( size( x ) );
 xi = round( x * (2^(XY_WIDTH-1)-1) );
 yi = round( y * (2^(XY_WIDTH-1)-1) );
-
 
 mode = C_FLAG_VEC_ROT + C_MODE_CIRC;
 
@@ -596,13 +596,3 @@ end
 
 
 
-function write_tb( fid, x_i, y_i, a_i, x_o, y_o, a_o, mode )
-
-if fid > 0
-    for x = 1 : length( x_i )
-        fprintf( fid, '%ld ', fix( [ x_i(x), y_i(x), a_i(x), x_o(x), y_o(x), a_o(x), mode ] ) );
-        fprintf( fid, '\n' );
-    end
-end
-
-end

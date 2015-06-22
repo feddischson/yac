@@ -84,7 +84,7 @@ end entity cordic_iterative_int;
 
 
 architecture BEHAVIORAL of cordic_iterative_int is
- 
+
    -- log2( max-iteration )
    constant L2_MAX_I    : natural := 8;
 
@@ -92,13 +92,13 @@ architecture BEHAVIORAL of cordic_iterative_int is
 
    -- Internal angle width
    constant A_WIDTH_I : natural := A_WIDTH+2;
-  
+
 
    constant SQRT2_REAL  : real    := 1.4142135623730951454746218587388284504413604;
    constant PI_REAL     : real    := 3.1415926535897931159979634685441851615905762;
-   constant PI          : integer := natural( PI_REAL    * real( 2**( A_WIDTH-1 ) ) + 0.5 );
-   constant PI_H        : integer := natural( PI_REAL    * real( 2**( A_WIDTH-2 ) ) + 0.5 );
-   constant SQRT2       : integer := natural( SQRT2_REAL * real( 2**( XY_WIDTH-1 ) ) + 0.5 );
+   constant PI          : integer := natural( round( PI_REAL    * real( 2**( A_WIDTH-1  ) ) ) );
+   constant PI_H        : integer := natural( round( PI_REAL    * real( 2**( A_WIDTH-2  ) ) ) );
+   constant SQRT2       : integer := natural( round( SQRT2_REAL * real( 2**( XY_WIDTH-1 ) ) ) );
    constant XY_MAX      : integer := natural( 2**( XY_WIDTH-1)-1);
 
 
@@ -122,10 +122,10 @@ architecture BEHAVIORAL of cordic_iterative_int is
       alst     : signed( A_WIDTH_I      -1 downto 0 );
       i        : signed( L2_MAX_I       -1 downto 0 );
       do_shift : std_logic;
-      done     : std_logic;
       repeate  : std_logic;
    end record state_t;
    signal state : state_t;
+
 
 
    ---------------------------------------
@@ -209,13 +209,12 @@ begin
                            alst     => ( others => '0' ),
                            mode     => ( others => '0' ),
                            i        => ( others => '0' ),
-                           done     => '0',
                            do_shift => '0',
                            repeate  => '0'
                            );
-       
+
          elsif en = '1' then
-   
+
             if state.st = ST_IDLE and start = '1' then
                state.st       <= ST_INIT;
                state.mode     <= mode_i;
@@ -223,7 +222,8 @@ begin
                state.y        <= resize( signed( y_i ), state.y'length );
                state.a        <= resize( signed( a_i ), state.a'length );
                state.i        <= ( others => '0' );
-               
+               state.alst     <= ( others => '0' );
+               state.ylst     <= ( others => '0' );
             elsif state.st = ST_INIT then
                -- 
                -- initialization state
@@ -235,15 +235,27 @@ begin
                state.do_shift <= '1';
 
 
-               if state.mode( 1 downto 0 ) = VAL_MODE_HYP then
-                  -- if we do a hyperbolic rotation, we start with 1
-                  state.i(0) <= '1';
-               end if;
+              if state.mode( 1 downto 0 ) = VAL_MODE_HYP then
+                 -- if we do a hyperbolic rotation, we start with 1
+                 state.i(0) <= '1';
+              end if;
 
 
 
+              if state.mode( I_FLAG_VEC_ROT ) = '1' and state.y = 0 then
+                     -- zero-input
+                     state.x_sum  <= state.x;
+                     state.y_sum  <= state.y;
+                     state.a      <= ( others => '0' );
+                     state.st     <= ST_DONE;
 
-               if     state.mode( I_FLAG_VEC_ROT ) = '0' 
+              elsif state.mode( I_FLAG_VEC_ROT ) = '0' and state.a = 0 then
+                     -- nothing to do, a is zero
+                     state.x_sum  <= state.x;
+                     state.y_sum  <= state.y;
+                     state.st     <= ST_DONE;
+
+              elsif     state.mode( I_FLAG_VEC_ROT ) = '0' 
                   and state.mode( 1 downto 0 )   =  VAL_MODE_CIR  then
                   -- circular vector mode
 
@@ -263,49 +275,50 @@ begin
                    and state.mode( 1 downto 0 )   = VAL_MODE_CIR then
                   -- circular rotation mode
 
-                  if state.x = 0 and state.y = 0 then
+                  if state.y = 0 then
                      -- zero-input
-                     state.a  <= ( others => '0' );
-                     state.y  <= ( others => '0' );
-                     state.st <= ST_DONE;
+                     state.x_sum  <= state.x;
+                     state.y_sum  <= state.y;
+                     state.a      <= ( others => '0' );
+                     state.st     <= ST_DONE;
 
                   elsif state.x = XY_MAX and state.y = XY_MAX then
                      -- all-max 1
-                     state.a  <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
-                     state.x  <= to_signed( SQRT2, state.x'length );
-                     state.y  <= (others => '0' );
-                     state.st <= ST_DONE;
+                     state.x_sum  <= to_signed( SQRT2, state.x'length );
+                     state.y_sum  <= (others => '0' );
+                     state.a      <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.st     <= ST_DONE;
                   elsif state.x = -XY_MAX and state.y = -XY_MAX then
                      -- all-max 2
-                     state.a  <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I ) - PI;
-                     state.x  <= to_signed( SQRT2, state.x'length );
-                     state.y  <= (others => '0' );
-                     state.st <= ST_DONE;
+                     state.x_sum  <= to_signed( SQRT2, state.x'length );
+                     state.y_sum  <= (others => '0' );
+                     state.a      <= resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I ) - PI;
+                     state.st     <= ST_DONE;
                   elsif state.x = XY_MAX and state.y = -XY_MAX then
                      -- all-max 3
-                     state.a  <= resize( -angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
-                     state.x  <= to_signed( SQRT2, state.x'length );
-                     state.y  <= (others => '0' );
-                     state.st <= ST_DONE;
+                     state.x_sum  <= to_signed( SQRT2, state.x'length );
+                     state.y_sum  <= (others => '0' );
+                     state.a      <= resize( -angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.st     <= ST_DONE;
                   elsif state.x = -XY_MAX and state.y = XY_MAX then
                      -- all-max 4
-                     state.a  <= PI-  resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
-                     state.x  <= to_signed( SQRT2, state.x'length );
-                     state.y  <= (others => '0' );
-                     state.st <= ST_DONE;
+                     state.x_sum  <= to_signed( SQRT2, state.x'length );
+                     state.y_sum  <= (others => '0' );
+                     state.a      <= PI-  resize( angular_lut( 0, state.mode( 1 downto 0 ), A_WIDTH ), A_WIDTH_I );
+                     state.st     <= ST_DONE;
 
                   elsif state.x = 0 and state.y > 0 then
                      -- fixed rotation of pi/2
-                     state.a  <= to_signed( PI_H, state.a'length );
-                     state.x  <= state.y;
-                     state.y  <= ( others => '0' );
-                     state.st<= ST_DONE;
+                     state.x_sum  <= state.y;
+                     state.y_sum  <= ( others => '0' );
+                     state.a      <= to_signed( PI_H, state.a'length );
+                     state.st     <= ST_DONE;
                   elsif state.x = 0 and state.y < 0 then
                      -- fixed rotation of -pi/2
-                     state.a  <= to_signed( -PI_H, state.a'length );
-                     state.x  <= -state.y;
-                     state.y  <= ( others => '0' );
-                     state.st<= ST_DONE;
+                     state.x_sum  <= -state.y;
+                     state.y_sum  <= ( others => '0' );
+                     state.a      <= to_signed( -PI_H, state.a'length );
+                     state.st     <= ST_DONE;
 
                   elsif state.x < 0 and state.y >= 0 then
                      -- move from second quadrant to fourth
@@ -323,6 +336,7 @@ begin
                elsif   state.mode( I_FLAG_VEC_ROT ) = '1'
                    and state.mode( 1 downto 0 )   = VAL_MODE_LIN then
                   -- linear rotation mode
+
                   if state.x < 0 then
                      state.x <= - state.x;
                      state.y <= - state.y;
@@ -365,7 +379,9 @@ begin
 
 
                if state.do_shift = '1' then
-                  -- get the angle, do the shifting and set the right angle
+                  state.do_shift <= '0';
+
+                  -- get the angle, do the shifting and set the correct angle
 
                   if sign = '1' then
 
@@ -414,7 +430,6 @@ begin
                      state.x_sh <= - SHIFT_RIGHT( state.x, to_integer( state.i ) );
 
                   end if;
-                  state.do_shift <= '0';
 
                   -- abort condition
                   if(   state.mode( I_FLAG_VEC_ROT ) = '0' and
@@ -455,7 +470,7 @@ begin
                end if;
 
 
-              
+
 
 
             --
@@ -466,7 +481,6 @@ begin
                -- calculate the RM_GAIN steps
                if state.i = (RM_GAIN) then
                  state.st   <= ST_DONE;
-                 state.done <= '1';
                    state.i <= ( others => '0' );
                else
                    state.i  <= state.i + 1;
@@ -479,8 +493,6 @@ begin
                   mult_0_21( state.x, state.x_sh, state.x_sum, to_integer( state.i ), RM_GAIN );
                   mult_0_21( state.y, state.y_sh, state.y_sum, to_integer( state.i ), RM_GAIN );
                else
-                  -- TODO  merge ST_DONE and state.done
-                  state.done <= '1';
                   state.st    <= ST_DONE;
                   state.x_sum <= state.x;
                   state.y_sum <= state.y;
@@ -489,7 +501,6 @@ begin
 
             elsif state.st = ST_DONE then
                state.st    <= ST_IDLE;
-               state.done  <= '0';
             end if;
             -- end states
 
@@ -503,7 +514,7 @@ begin
       -- end clk
 
    end process;
-   done        <=                   state.done   ;
+   done        <= '1' when state.st = ST_DONE else '0';
    x_o         <= std_logic_vector( state.x_sum );
    y_o         <= std_logic_vector( state.y_sum );
    a_o         <= std_logic_vector( state.a );

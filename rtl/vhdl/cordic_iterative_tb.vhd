@@ -80,10 +80,10 @@ architecture IMP of cordic_iterative_tb is
    signal rst           : std_logic;
    signal nrst          : std_logic;
 
-   constant XY_WIDTH    : natural := 25;
-   constant A_WIDTH     : natural := 25;
-   constant GUARD_BITS  : natural :=  2;
-   constant RM_GAIN     : natural :=  5;
+   constant XY_WIDTH    : natural := 8;
+   constant A_WIDTH     : natural := 8;
+   constant GUARD_BITS  : natural := 2;
+   constant RM_GAIN     : natural := 3;
    component cordic_iterative_int is
    generic(
       XY_WIDTH    : natural := 12;
@@ -117,7 +117,6 @@ architecture IMP of cordic_iterative_tb is
    signal a_o       : std_logic_vector( A_WIDTH+2-1 downto 0 );
 
 
-
 begin
 
 
@@ -139,7 +138,7 @@ begin
       rst   <= '0';
       wait;
    end process;
-  
+
 
 
 
@@ -188,7 +187,7 @@ begin
       variable err_cnt              : integer := 0;
       variable stim_cnt             : integer := 0;
   begin
-  
+
     err_cnt := 0;
 
     --
@@ -216,7 +215,6 @@ begin
     wait until clk'event and clk='1';
 
     while ( not endfile( test_pattern_file ) )loop
-
 
         wait until en='1';
         wait for clk_T;
@@ -252,21 +250,21 @@ begin
            a_ex /= a_o then
            assert x_ex = x_o report 
                  integer'image( stim_cnt ) & ": Serial Cordic Failed: expected x result:" 
-                 & integer'image( tmp_value(5) ) & ", but got:" 
-                 & integer'image( to_integer( signed( x_ex ) ) );
+                 & integer'image( tmp_value(3) ) & ", but got:" 
+                 & integer'image( to_integer( signed( x_o ) ) );
            assert y_ex = y_o report 
                  integer'image( stim_cnt ) &   ": Serial Cordic Failed: expected y result:" 
-                 & integer'image( tmp_value(6) ) & ", but got:" 
-                 & integer'image( to_integer( signed( y_ex ) ) );
+                 & integer'image( tmp_value(4) ) & ", but got:" 
+                 & integer'image( to_integer( signed( y_o ) ) );
            assert a_ex = a_o report 
                  integer'image( stim_cnt ) &   ": Serial Cordic Failed: expected a result:" 
-                 & integer'image( tmp_value(7) ) & ", but got:" 
-                 & integer'image( to_integer( signed( a_ex ) ) );
+                 & integer'image( tmp_value(5) ) & ", but got:" 
+                 & integer'image( to_integer( signed( a_o ) ) );
             err_cnt := err_cnt + 1;
          writeline( error_pattern_file, input_line_bak );
 
         end if;
-        
+
         wait for CLK_T * 5;
 
     end loop;
@@ -283,7 +281,7 @@ begin
       wait for clk_T * 10;
       en <= '1';
       wait for clk_T * 1000;
-      
+
    end process;
 
 

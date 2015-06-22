@@ -56,11 +56,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "mex.h"
+
+#ifndef OR32_TARGET
+ #include "mex.h"
+#endif 
 
 /* enable debug output */
 #define PRINT_DEBUG        0
-
 
 /* #define CORDIC_ROUNDING    0.5 */
 #define CORDIC_ROUNDING    0.0
@@ -75,9 +77,9 @@
 #define C_MODE_HYP         0x02
 
 
-
-#define PRINT  mexPrintf
-
+#ifndef OR32_TARGET
+ #define PRINT  mexPrintf
+#endif
 
 
 void cordic_int( long long int   x_i, 
@@ -119,7 +121,7 @@ long long int  cordic_int_lut    ( int             mode,
 
 
 
-
+#ifndef OR32_TARGET
 
 
 void mexFunction(int nlhs, mxArray *plhs[],
@@ -139,39 +141,39 @@ void mexFunction(int nlhs, mxArray *plhs[],
       mexErrMsgTxt("8 input arguments required");
    if(nlhs!=4)
       mexErrMsgTxt("4 output arguments required");
-       
+
    if (!mxIsDouble(prhs[0]) || mxIsComplex(prhs[0]))
       mexErrMsgTxt("Input x must be double and non-complex");
- 
+
    if (!mxIsDouble(prhs[1]) || mxIsComplex(prhs[1]))
       mexErrMsgTxt("Input y must be double and non-complex");
-   
+
    if (!mxIsDouble(prhs[2]) || mxIsComplex(prhs[2]))
       mexErrMsgTxt("Input a must be double and non-complex");
-   
+
    mrowsx = mxGetM(prhs[0]);
    ncolsx = mxGetN(prhs[0]);
    mrowsy = mxGetM(prhs[1]);
    ncolsy = mxGetN(prhs[1]);
    mrowsz = mxGetM(prhs[2]);
    ncolsz = mxGetN(prhs[2]);
-   
-   
+
+
 
    if (mrowsx > 1 || mrowsy >1 || mrowsz > 1)
        mexErrMsgTxt("Input vector must have the size Nx1.");
 
    /* printf("%d %d %d\n", ncolsx, ncolsy, ncolsa); */
-   
+
    if (ncolsx!=ncolsy || ncolsx!=ncolsz || ncolsy!=ncolsz)
        mexErrMsgTxt("Input vectors don't have the same length!");
-       
-       
+
+
    plhs[0] = mxCreateDoubleMatrix(mrowsx,ncolsx,mxREAL);
    plhs[1] = mxCreateDoubleMatrix(mrowsy,ncolsy,mxREAL);
    plhs[2] = mxCreateDoubleMatrix(mrowsz,ncolsz,mxREAL);
    plhs[3] = mxCreateDoubleMatrix(mrowsz,ncolsz,mxREAL);
-           
+
    inx         = mxGetPr(prhs[0]);
    iny         = mxGetPr(prhs[1]);
    inz         = mxGetPr(prhs[2]);
@@ -204,12 +206,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
         outy[i] = outy_i;
         outz[i] = outz_i;
         outi[i] = it;
-        
+
 
    }
 }
 
-
+#endif
 
 
 
@@ -235,11 +237,11 @@ void cordic_int( long long int   x_i,
    int it = 0;
 
 
-   
+
 
    /* total with, including guard bits */
    int XY_WIDTH_G = XY_WIDTH + GUARD_BITS;
-   
+
    cordic_int_dbg( x_i, y_i, a_i, mode, 0, "input" );
 
    if( !cordic_int_init( &x_i, &y_i, &a_i, mode, A_WIDTH, XY_WIDTH ) )
@@ -275,16 +277,34 @@ int cordic_int_init( long long int *x,
 
    long long int PI   = ( long long int )( M_PI * pow( 2, A_WIDTH-1 ) + 0.5 );
    long long int PI_H = (long long int)(  M_PI * pow( 2, A_WIDTH-2 ) + 0.5  );
-  
+
    long long int XY_MAX = pow( 2, XY_WIDTH-1 )-1;
-   
+
    cordic_int_dbg( *x, *y, *a, mode, 0, "before init" );
 
 
+   if( 0 != ( mode &  C_FLAG_VEC_ROT ) && *y == 0 )
+   {
+       already_done = 1;
+       *a = 0;
+       #if PRINT_DEBUG > 0
+       PRINT( "Zero input, skipping rotations \n" );
+       #endif
+   }
+   else if( 0 == ( mode &  C_FLAG_VEC_ROT )  && *a == 0 )
+   {
+       #if PRINT_DEBUG > 0
+       PRINT("zero angular input\n" );
+       #endif
+       already_done = 1;
+   }
+
    /* Circular rotation mode */
-   if( 0          == ( mode &  C_FLAG_VEC_ROT )    &&
+   else if( 0          == ( mode &  C_FLAG_VEC_ROT )    &&
        C_MODE_CIR == ( mode &  C_MODE_MSK     )  )
    {
+
+
       /* move from third quadrant to first 
          quadrant if necessary */
       if( *a <  - PI_H )
@@ -316,21 +336,14 @@ int cordic_int_init( long long int *x,
              C_MODE_CIR == ( mode &  C_MODE_MSK     )  )
    {
 
-      if( *x == 0 && *y == 0 )
-      {
-         already_done = 1;
-         *a = 0;
-         #if PRINT_DEBUG > 0
-         PRINT( "Zero input, skipping rotations \n" );
-         #endif
-      }
-      else if( *x == XY_MAX && *y == XY_MAX )
+      if( *x == XY_MAX && *y == XY_MAX )
       {
          #if PRINT_DEBUG > 0
          PRINT( "All max, skipping rotations 1\n" );
          #endif
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 ) + 0.5;
+         *y = 0;
          *a = cordic_int_lut( mode, 0, A_WIDTH );
-         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
          already_done = 1;
       }
       else if( *x == -XY_MAX && *y == -XY_MAX )
@@ -338,8 +351,9 @@ int cordic_int_init( long long int *x,
          #if PRINT_DEBUG > 0
          PRINT( "All max, skipping rotations 2\n" );
          #endif
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 ) + 0.5;
+         *y = 0;
          *a = cordic_int_lut( mode, 0, A_WIDTH ) - PI;
-         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
          already_done = 1;
       }
       else if( *x ==  XY_MAX && *y == -XY_MAX )
@@ -347,8 +361,9 @@ int cordic_int_init( long long int *x,
          #if PRINT_DEBUG > 0
          PRINT( "All max, skipping rotations 3\n" );
          #endif
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 ) + 0.5;
+         *y = 0;
          *a = -cordic_int_lut( mode, 0, A_WIDTH );
-         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
          already_done = 1;
       }
       else if( *x == -XY_MAX && *y ==  XY_MAX )
@@ -356,8 +371,9 @@ int cordic_int_init( long long int *x,
          #if PRINT_DEBUG > 0
          PRINT( "All max, skipping rotations 4\n" );
          #endif
+         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 ) + 0.5;
+         *y = 0;
          *a = PI - cordic_int_lut( mode, 0, A_WIDTH );
-         *x = sqrt( 2 ) * pow( 2, XY_WIDTH-1 );
          already_done = 1;
       }
 
@@ -369,7 +385,7 @@ int cordic_int_init( long long int *x,
          *x = *y;
          already_done = 1;
          #if PRINT_DEBUG > 0
-         PRINT( "Fixed value of pi/2, skipping rotations" );
+         PRINT( "Fixed value of pi/2, skipping rotations\n" );
          #endif
          *y = 0;
       }
@@ -380,7 +396,7 @@ int cordic_int_init( long long int *x,
          *y = 0;
          already_done = 1;
          #if PRINT_DEBUG > 0
-         PRINT( "Fixed value of -pi/2, skipping rotations" );
+         PRINT( "Fixed value of -pi/2, skipping rotations\n" );
          #endif
       }
       else if( *x < 0  && *y >= 0 )
@@ -415,7 +431,6 @@ int cordic_int_init( long long int *x,
       }
       *a = 0;
    }
-
    cordic_int_dbg( *x, *y, *a, mode, 0, "after init" );
    return already_done; 
 }
@@ -438,11 +453,11 @@ int cordic_int_dbg(  long long int x,
 int cordic_int_repeat( iteration, mode )
 {
    int i = 4;
-   
+
    if( C_MODE_HYP != ( mode & C_MODE_MSK ) )
       return 0;
-       
-    
+
+
    while( 1 )
    {
       if( i == iteration )
@@ -531,7 +546,7 @@ int cordic_int_rotate( long long int * x,
          }
       }
       cordic_int_dbg( *x, *y, *a, mode, it, "after rotation" );
-      
+
       /* abort condition */
       if( ( mode & C_FLAG_VEC_ROT  ) == 0 && 
           ( *a == 0 /* || *a == -1 */ ) )
@@ -539,7 +554,7 @@ int cordic_int_rotate( long long int * x,
       if( ( mode & C_FLAG_VEC_ROT  ) == 0 && 
           ( *a == alst ) )
           break;
-      
+
       if( ( mode & C_FLAG_VEC_ROT  ) != 0 && 
           ( *y == 0 /*|| *y == -1 */ ) )
           break;
@@ -549,7 +564,9 @@ int cordic_int_rotate( long long int * x,
 
       else if( it > 40 )
       {
+#if PRINT_DEBUG
          PRINT( "ERROR: abort %lld %lld %lld %lld - %d - %d!\n", *a, alst, *y, ylst, mode, *y == ylst );
+#endif
          it = -1;  
           break;
       }

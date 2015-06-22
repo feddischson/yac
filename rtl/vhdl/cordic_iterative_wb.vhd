@@ -299,7 +299,7 @@ begin
         b3_trans       <= WB_NO_BURST;
         ack_r          <= '0';
       else
-      
+
         cti_r <= cti_i;
         bte_r <= bte_i;
 
@@ -318,14 +318,14 @@ begin
 
           -- start of burst
           b3_trans    <= WB_BURST;
-          
+
         elsif burst_end = '1' then
 
           -- end of burst
           b3_trans <= WB_NO_BURST;
 
         elsif b3_trans = WB_BURST then
-      
+
           -- during burst
 
         end if;
@@ -386,7 +386,7 @@ begin
   wr_p : process( clk_i, rst_i )
     variable MEM_START : integer;
   begin
-    
+
     if clk_i'event and clk_i='1' then
       if rst_i = '1' then
         MEM <= ( others => ( others => '0' ) );
@@ -437,19 +437,19 @@ begin
           state.st     <= ST_WAIT;
         end if;
 
-     
+
         -- single cordic calculation is done:
         -- save the result and start the next one or
         -- go back to idle
         if state.st = ST_WAIT and cordic_done = '1' then
           MEM_START := to_integer( state.cnt & "00" ); -- state.cnt * 4
-          MEM( MEM_START+0 ) <= ( others => '0' );
-          MEM( MEM_START+1 ) <= ( others => '0' );
-          MEM( MEM_START+2 ) <= ( others => '0' );
+          MEM( MEM_START+0 ) <= ( others =>  cordic_x_o( cordic_x_o'high ));
+          MEM( MEM_START+1 ) <= ( others =>  cordic_y_o( cordic_y_o'high ) );
+          MEM( MEM_START+2 ) <= ( others =>  cordic_a_o( cordic_a_o'high ) );
           MEM( MEM_START+0 )( cordic_x_o'range ) <= cordic_x_o;
           MEM( MEM_START+1 )( cordic_y_o'range ) <= cordic_y_o;
           MEM( MEM_START+2 )( cordic_a_o'range ) <= cordic_a_o;
-         
+
 
           if state.cnt = 0 then
 
@@ -465,7 +465,7 @@ begin
             state.st <= ST_START;
             state.cnt <= state.cnt-1;
           end if;
- 
+
         end if;
 
       end if;
