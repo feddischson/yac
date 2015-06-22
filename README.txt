@@ -77,7 +77,8 @@ Status
 - RTL model implementation is done
 - RTL model is verified against C-model
 - Wishbone-bus wrapper is added
-- included into a small SoC, tested on a spartan-3 FPGA
+- Included into a small SoC, tested on a spartan-3 FPGA
+- Testing within an SOC is done (see ./test_sys)
 
 
 
@@ -86,7 +87,6 @@ Next-Steps
 -----------------------
 - Circuit optimizations
 - Numerical optimizations
-- Further testing within an SOC
 
 
 
@@ -105,7 +105,7 @@ Files and folders:
 
  ./doc      :  Will contain a detailed documentation in future.
 
-
+ ./test_sys :  Contains a test system to test the YAC on a spartan-3an board
 
 
 
