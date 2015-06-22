@@ -1,0 +1,5 @@
+SOCM_INCLUDE
+v_socm: 0.1.1
+dirs:
+   - soc_maker_lib
+   - ../

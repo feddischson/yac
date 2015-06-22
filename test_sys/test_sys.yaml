@@ -1,0 +1,215 @@
+SOCM_SOC
+v_socm: 0.1.1
+name: YAC Test SOC
+description: 'A test system to test the YAC core'
+date: 'June 2015'
+license: 'LGPL v3'
+licensefile: ''
+author: 'Christian Haettich'
+authormail: 'feddischson@opencores.org'
+vccmd: ''
+toplevel: yac_test_soc
+interfaces:
+  :clk_ifc: SOCM_IFC
+    name: clk
+    dir: 1
+    ports:
+      :clk_i: SOCM_PORT
+        spc_ref: clk
+        len: 1
+    id: clk,1
+  :rst_ifc: SOCM_IFC
+    name: rst
+    dir: 1
+    ports:
+      :rst_i: SOCM_PORT
+        spc_ref: rst
+        len: 1
+    id: rst,1
+  :jtag_ifc: SOCM_IFC
+    name: jtag_tap
+    dir: 1
+    ports:
+      :tck_i: SOCM_PORT
+        spc_ref: tck
+        len: 1
+      :tdi_i: SOCM_PORT
+        spc_ref: tdi
+        len: 1
+      :tdo_o: SOCM_PORT
+        spc_ref: tdo
+        len: 1
+      :debug_rst_i: SOCM_PORT
+        spc_ref: rst
+        len: 1
+      :shift_dr_i: SOCM_PORT
+        spc_ref: shift
+        len: 1
+      :pause_dr_i: SOCM_PORT
+        spc_ref: pause
+        len: 1
+      :update_dr_i: SOCM_PORT
+        spc_ref: update
+        len: 1
+      :capture_dr_i: SOCM_PORT
+        spc_ref: capture
+        len: 1
+      :debug_select_i: SOCM_PORT
+        spc_ref: select
+        len: 1
+    id: jtag_tap,1
+  :uart_ifc: SOCM_IFC
+    name: uart
+    dir: 1
+    ports:
+      :stx_pad_o: SOCM_PORT
+        spc_ref: stx_pad
+        len: 1
+      :srx_pad_i: SOCM_PORT
+        spc_ref: srx_pad
+        len: 1
+      :rts_pad_o: SOCM_PORT
+        spc_ref: rts_pad
+        len: 1
+      :cts_pad_i: SOCM_PORT
+        spc_ref: cts_pad
+        len: 1
+      :dtr_pad_o: SOCM_PORT
+        spc_ref: dtr_pad
+        len: 1
+      :dsr_pad_i: SOCM_PORT
+        spc_ref: dsr_pad
+        len: 1
+      :ri_pad_i: SOCM_PORT
+        spc_ref: ri_pad
+        len: 1
+      :dcd_pad_i: SOCM_PORT
+        spc_ref: dcd_pad
+        len: 1
+    id: uart,1
+functions: {}
+inst_parameters: {}
+static_parameters: {}
+hdlfiles: {}
+id: yac_test_soc,v1
+cores:
+  :cpu: SOCM_INST
+    params: {}
+    type: or1200,rel2
+  :wb_bus: SOCM_INST
+    type: wb_connect,1
+    params:
+      :t0_addr_w: 8
+      :t0_addr: 0
+      :t1_addr_w: 8
+      :t1_addr: 4
+      :t28c_addr_w: 4
+      :t28_addr: 9
+      :t28i_addr_w: 8
+      :t2_addr: 151
+      :t3_addr: 146
+      :t4_addr: 157
+      :t5_addr: 144
+      :t6_addr: 148
+      :t7_addr: 158
+      :t8_addr: 159
+  :dbg: SOCM_INST
+    type: adv_debug_sys,ads_3
+    params: {}
+  :ram1: SOCM_INST
+    type: ram_wb,b3
+    params:
+      :mem_size_bytes: 10240
+      :mem_adr_width: 14
+  :ram2: SOCM_INST
+    params:
+      :mem_size_bytes: 10240
+      :mem_adr_width: 15
+    type: ram_wb,b3
+  :uart: SOCM_INST
+    type: uart16550,rel4
+    params:
+      :uart_data_width: 32
+      :uart_addr_width: 32
+  :yac: SOCM_INST
+    type: yac,v0
+    params:
+      :WB_ADR_WIDTH: 32
+      :N_ENTRIES: 4
+      :A_WIDTH: 8
+      :XY_WIDTH: 8
+      :GUARD_BITS: 2
+      :RM_GAIN: 3
+cons:
+  :con_main_clk:
+    :mapping:
+    - :yac_test_soc: :clk_ifc
+    - :cpu: :clk
+      :wb_bus: :clk
+      :dbg: :cpu0_dbg_clk
+  :con_main_rst:
+    :mapping:
+    - :yac_test_soc: :rst_ifc
+    - :cpu: :rst
+      :wb_bus: :rst
+  :con_jtag_top:
+    :mapping:
+    - :yac_test_soc: :jtag_ifc
+    - :dbg: :jtag
+  :con_uart_top:
+    :mapping:
+    - :yac_test_soc: :uart_ifc
+    - :uart: :uart_ifc
+  :con_wb_debug:
+    :mapping:
+    - :wb_bus: :i3
+    - :dbg: :wb_ifc
+  :con_data:
+    :mapping:
+    - :wb_bus: :i4
+    - :cpu: :wb_data
+  :con_instruction:
+    :mapping:
+    - :wb_bus: :i5
+    - :cpu: :wb_instruction
+  :con_ram1:
+    :mapping:
+    - :wb_bus: :t0
+    - :ram1: :wb_ifc
+  :con_ram2:
+    :mapping:
+    - :wb_bus: :t1
+    - :ram2: :wb_ifc
+  :con_uart:
+    :mapping:
+    - :wb_bus: :t5
+    - :uart: :wb_ifc
+  :con_debug:
+    :mapping:
+    - :dbg: :cpu0_dbg
+    - :cpu: :ext_debug
+  :con_yac:
+    :mapping:
+    - :wb_bus: :t8
+    - :yac: :wb_ifc
+static:
+  :or1200,rel2:
+    :VCD_DUMP: false
+    :VERBOSE: false
+    :ASIC: false
+    :ASIC_MEM_CHOICE: 0
+    :ASIC_NO_DC: true
+    :ASIC_NO_IC: true
+    :ASIC_NO_DMMU: true
+    :ASIC_NO_IMMU: true
+    :ASIC_MUL_CHOICE: 0
+    :ASIC_IC_CHOICE: 0
+    :ASIC_DC_CHOICE: 0
+    :FPGA_MEM_CHOICE: 2
+    :FPGA_NO_DC: true
+    :FPGA_NO_IC: true
+    :FPGA_NO_DMMU: true
+    :FPGA_NO_IMMU: true
+    :FPGA_MUL_CHOICE: 1
+    :FPGA_IC_CHOICE: 0
+    :FPGA_DC_CHOICE: 0

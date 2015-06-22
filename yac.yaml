@@ -1,0 +1,140 @@
+SOCM_CORE
+v_socm: 0.1.1
+name: yac
+id: yac,v0
+description: 'Yet Another CORDIC Core'
+date: '2015'
+license: 'LGPL v3'
+licensefile: ''
+author: 'Christian Haettich'
+authormail: 'feddischson@opencores.org'
+vccmd: 'git clone https://github.com/feddischson/yac.git'
+toplevel: cordic_iterative_wb
+interfaces:
+  :wb_ifc: SOCM_IFC
+    name: Wishbone IFC
+    dir: 1
+    id: wishbone_sl,b3
+    ports:
+      :adr_i: SOCM_PORT
+        len: 32
+        spc_ref: adr
+      :bte_i: SOCM_PORT
+        len: 2
+        spc_ref: bte
+      :cti_i: SOCM_PORT
+        len: 3
+        spc_ref: cti
+      :cyc_i: SOCM_PORT
+        len: 1
+        spc_ref: cyc
+      :dat_i: SOCM_PORT
+        len: 32
+        spc_ref: dat_o
+      :sel_i: SOCM_PORT
+        len: 4
+        spc_ref: sel
+      :stb_i: SOCM_PORT
+        len: 1
+        spc_ref: stb
+      :we_i: SOCM_PORT
+        len: 1
+        spc_ref: we
+      :ack_o: SOCM_PORT
+        len: 1
+        spc_ref: ack
+      :dat_o: SOCM_PORT
+        len: 32
+        spc_ref: dat_i
+      :clk_i: SOCM_PORT
+        len: 1
+        spc_ref: clk
+      :rst_i: SOCM_PORT
+        len: 1
+        spc_ref: rst
+# :irq_ifc: SOCM_IFC
+#   name: IRQ IFC
+#   dir: 1
+#   id: single,1
+#   ports:
+#     :irq_o: SOCM_PORT
+#       len: 1
+#       spc_ref: single
+
+
+functions: {}
+inst_parameters:
+  :WB_ADR_WIDTH: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+  :N_ENTRIES: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+  :A_WIDTH: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+  :XY_WIDTH: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+  :GUARD_BITS: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+  :RM_GAIN: SOCM_PARAM
+    type: natural
+    default: 0
+    min: 0
+    max: 0
+    visible: true
+    editable: false
+    description: ''
+static_parameters: {}
+hdlfiles:
+  cordic_iterative_int: SOCM_HDL_FILE
+    path: rtl/vhdl/cordic_iterative_int.vhd
+    use_syn: true
+    use_sys_sim: true
+    use_mod_sim: true
+    type: vhdl
+  cordic_iterative_pkg: SOCM_HDL_FILE
+    path: rtl/vhdl/cordic_iterative_pkg.vhd
+    use_syn: true
+    use_sys_sim: true
+    use_mod_sim: true
+    type: vhdl
+  cordic_iterative_tb: SOCM_HDL_FILE
+    path: rtl/vhdl/cordic_iterative_tb.vhd
+    use_syn: false
+    use_sys_sim: true
+    use_mod_sim: true
+    type: vhdl
+  cordic_iterative_wb: SOCM_HDL_FILE
+    path: rtl/vhdl/cordic_iterative_wb.vhd
+    use_syn: true
+    use_sys_sim: false
+    use_mod_sim: false
+    type: vhdl
