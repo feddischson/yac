@@ -94,7 +94,7 @@ void cordic_int( long long int   x_i,
                  int        A_WIDTH,
                  int        GUARD_BITS,
                  int        RM_GAIN );
-int            cordic_int_dbg    ( long long int x,
+void           cordic_int_dbg    ( long long int x,
                                    long long int y,
                                    long long int a,
                                    int           mode,
@@ -437,7 +437,7 @@ int cordic_int_init( long long int *x,
 
 
 
-int cordic_int_dbg(  long long int x,
+void cordic_int_dbg(  long long int x,
                      long long int y,
                      long long int a,
                      int           mode,

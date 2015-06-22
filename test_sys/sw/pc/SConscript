@@ -1,0 +1,13 @@
+
+env = Environment( tools        = [ 'default' ],
+                   CPPDEFINES   = ['OR32_TARGET'],
+                   CPPPATH      = [ "../inc", '../../../sw/inc'],
+                   LINKFLAGS    = "-lm",
+                   OBJSUFFIX = ['.opc' ],
+                   CCFLAGS = "-Wall -g -Wno-unused-variable"
+                   )
+
+target = env.Program( "../test_tool", [ "main.c", "../../../c_octave/cordic_iterative.c", "../src/crc.c" ] )
+
+
+# vim: filetype=python et ts=3 sw=3 

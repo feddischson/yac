@@ -1,0 +1,5 @@
+
+SConscript( [ 'pc/SConscript',
+              'or32/SConscript' ])
+
+# vim: set filetype=python

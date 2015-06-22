@@ -1,0 +1,35 @@
+import os
+
+env = Environment( ENV   = { 'PATH' : os.environ['PATH'] },
+        tools = [  'default', 'gcc', 'gnulink' ],
+                   CC    = 'or32-elf-gcc',
+                   CXX   = 'or32-elf-g++',
+                   LINK  = 'or32-elf-ld',
+                   AS    = 'or32-elf-as',
+                   AR    = 'or32-elf-ar',
+                   CPPPATH = ["./", '../inc', '../../../sw/inc' ],
+                   OBJSUFFIX = ['.oor32' ],
+                   CCFLAGS = "-Wall -mhard-mul -mhard-div -nostdlib -g -O0 -mnewlib",
+                   ASFLAGS = "-Wall -mhard-mul -mhard-div -nostdlib -g -O0 -mnewlib",
+                   LINKFLAGS = "-L /opt_fpga/or32-toolchain/or32-linux/lib -lm -T or32/orp.ld ",
+                   CPPDEFINES = [ 'OR32_TARGET']
+                   )
+
+env2 = env.Clone()
+env2.Append( ASFLAGS = " -DIC=0 -DDC=0 " )
+
+
+src =[ 
+       File( "support.c"    ),
+       File( "main.c"       ),
+       File( "uart.c"       ),
+       File( "interrupts.c" ),
+       File( "except.S"     ),
+       File( "../../../sw/src/yac.c" ),
+       File( "../src/crc.c" )
+       ]
+
+obj = env.Object( src ) + env2.Object( File( "reset.S" ) )
+target = env.Program( '../test_sys_sw.or32', obj )
+
+# vim: filetype=python et ts=3 sw=3 
