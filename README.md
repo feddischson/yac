@@ -81,11 +81,11 @@ Files and folders:
 
 References
 ====================
-   [1] Andraka, Ray; A survey of CORDIC algorithms for FPGA based computers, 1989 
-   [2] Hu, Yu Hen; CORDIC-Based VLSI Architectures for Digital Signal Processing, 1992 
-   [3] CORDIC on wikibook: http://en.wikibooks.org/wiki/Digital_Circuits/CORDIC 
-   [4] CORDIC on wikipedia:http://en.wikipedia.org/wiki/CORDIC 
-   [5] David, Herbert; Meyr, Heinricht; CORDIC Algorithms and Architectures 
+  - [1] Andraka, Ray; A survey of CORDIC algorithms for FPGA based computers, 1989 
+  - [2] Hu, Yu Hen; CORDIC-Based VLSI Architectures for Digital Signal Processing, 1992 
+  - [3] CORDIC on wikibook: http://en.wikibooks.org/wiki/Digital_Circuits/CORDIC 
+  - [4] CORDIC on wikipedia:http://en.wikipedia.org/wiki/CORDIC 
+  - [5] David, Herbert; Meyr, Heinricht; CORDIC Algorithms and Architectures 
        http://www.eecs.berkeley.edu/newton/Classes/EE290sp99/lectures/ee290aSp996_1/cordic_chap24.pdf 
 
 
