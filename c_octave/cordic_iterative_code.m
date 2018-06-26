@@ -8,7 +8,7 @@
 %%%%  Target         : Octave, Matlab                                   %%%%
 %%%%                                                                    %%%%
 %%%%  Author(s):     : Christian Haettich                               %%%%
-%%%%  Email          : feddischson@opencores.org                        %%%%
+%%%%  Email          : feddischson@gmail.com                            %%%%
 %%%%                                                                    %%%%
 %%%%                                                                    %%%%
 %%%%%                                                                  %%%%%
@@ -147,10 +147,10 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
     if ~exist( 'c_or_vhdl', 'var' )
         c_or_vhdl = 0;
     end
-    
+
     val_str = sprintf( '%4.2f', value );
     val_str( val_str == '.' ) = ('_' );
- 
+
     if c_or_vhdl
         fprintf( fid, '/*  Auto-generated procedure to multiply "x" with %f */\n', value );
         fprintf( fid, '/* "shifts" defines the number of shifts, which are used */\n' );
@@ -159,10 +159,10 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
     i_shift = 1;
     for x = 1 : length( signs )
         if signs( x ) ~= 0
-            
+
             tmp     = signs( 1 : x );
-            
-            
+
+
             err = value - sum( tmp .* 2.^-( 1 : length( tmp ) ) );
             if force_pos_err 
                 if err < 0 
@@ -184,24 +184,24 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
             tmp2                =  cell( size ( tmp ) );
             tmp2( tmp ==  1 )   = { '+' };
             tmp2( tmp == -1 )   = { '-' };
-            
+
             if c_or_vhdl
-                
+
                 % C-Code
                 if plus_one
                     fprintf( fid,  '   case %d: x = x ', i_shift );
                 else
                     fprintf( fid,  '   case %d: x = ', i_shift );
                 end
-                
+
                 for y = 1 : length( tmp2 )
                     fprintf( fid,  '%c ( x >> %d ) ', tmp2{ y }, index( y ) );
                 end
                 fprintf( fid,  '; break; /* error: %.10f */ \n', err );
             else
-                
+
                 % VHDL CODE
-                
+
                 fprintf( fid, '\n\n--\n' );
                 fprintf( fid, '-- Auto-generated procedure to multiply "a" with %f iteratively\n', value );
                 fprintf( fid, '-- a_sh is a temporary register to store the shifted value, and \n' );
@@ -213,7 +213,7 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
                 fprintf( fid, '                          cnt  : in    natural ) is \n' );
                 fprintf( fid, '   begin\n' );
                 fprintf( fid, '      case cnt is\n' );
-                
+
                 if plus_one
                 fprintf( fid, '         when   0 => sum  <= a;\n' );                       
                 else
@@ -237,8 +237,8 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
     if c_or_vhdl
         fprintf( fid,  '   default: x = x; break;\n}\n' );
     end
-    
-    
+
+
     if ~c_or_vhdl
         fprintf( fid, '\n\n--\n' );
         fprintf( fid, '-- Auto-generated procedure to multiply "a" with %f iteratively\n', value );
@@ -259,7 +259,7 @@ function print_rm_gain_code( fid, signs, value, force_pos_err, c_or_vhdl, plus_o
         fprintf( fid, '      end case;\n' );
         fprintf( fid, 'end procedure mult_%s;\n', val_str );
     end
-    
+
 
 end
 
@@ -268,12 +268,12 @@ function signs = get_rm_gain_shifts( value, N_shifts )
     %signs       = zeros( 1, N_steps );
     signs       = [  ];
     from_p_n = 1;   % comming from pos or neg
-    
+
     prev_pos_err = inf;
     prev_neg_err = inf;
     i_shift = 0;
     x = 0;
-    
+
     while i_shift < N_shifts
         x = x + 1; 
         if isempty( signs ) 
@@ -281,7 +281,7 @@ function signs = get_rm_gain_shifts( value, N_shifts )
         else
             tmp = sum( signs .* 2.^-( 1 : length( signs ) ) );
         end;
-        
+
         pos_err = value - ( tmp + 2^-x );
         neg_err = value - ( tmp - 2^-x );
         signs( end+1 ) = 0;
@@ -292,7 +292,7 @@ function signs = get_rm_gain_shifts( value, N_shifts )
             continue
         end
         i_shift = i_shift+1;
-        
+
         if from_p_n == 1 && abs( prev_pos_err ) < abs( pos_err )
             signs( x-1 ) = 1;
             from_p_n = 0;
@@ -300,7 +300,7 @@ function signs = get_rm_gain_shifts( value, N_shifts )
             if neg_err2 < 0
                 signs( x ) = -1;
             end
-            
+
         elseif from_p_n == 0 && abs( prev_neg_err ) < abs( neg_err )
             signs( x-1 ) = -1;
             from_p_n = 1;
@@ -308,14 +308,14 @@ function signs = get_rm_gain_shifts( value, N_shifts )
             if pos_err2 > 0
                 signs( x ) =  1;
             end
-            
-            
+
+
         elseif from_p_n == 1 && abs( prev_pos_err ) >= abs( pos_err )
             signs( x ) = 1;
-            
+
         elseif from_p_n == 0 && abs( prev_pos_err ) >= abs( pos_err )
             signs( x ) = -1;
-            
+
         end
         prev_pos_err = pos_err;
         prev_neg_err = neg_err;

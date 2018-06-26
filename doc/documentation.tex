@@ -20,7 +20,7 @@
 \newcommand{\state}[1]{{\tt\textbf{#1}}}
 \newcommand{\signal}[1]{{\textbf{\tt#1}}}
 \title{YAC - Yet Another CORDIC Core} 
-\author{Christian Haettich [feddischson@opencores.org]} 
+\author{Christian Haettich [feddischson@gmail.com]} 
 \date{\today}
 
 \begin{document}
@@ -42,6 +42,7 @@ IP core and C-model documentation
    \begin{tabular}{@{}llll@{}}
       \rowcolor{tableheadcolor}\textbf{Version}& \textbf{Date} & \textbf{Description} & \textbf{Author}  \\
 
+      \multirow{1}{*}{0.02}  & 26th June 2018 & E-mail address update and diagrams de-drawn & Christian Haettich\\\midrule
       \multirow{1}{*}{0.01}  & 4th March 2014 & Initial document & Christian Haettich\\\midrule
       \bottomrule
    \end{tabular}
@@ -82,7 +83,7 @@ Lesser General Public License for more details.              \newline\newline
 You should have received a copy of the GNU Lesser General Public   
 License along with this library. If not, download it from          
 http://www.gnu.org/licenses/lgpl                                   
-                                                                   
+
 
 \section{The CORDIC algorithm}
 
@@ -139,7 +140,7 @@ following six modes are supported:
 
 \begin{figure}[p]
 \centering
-   \includegraphics{figs/block_symbol.pdf}
+   \includegraphics[width=250pt]{figs/block_symbol.pdf}
    \caption{YAC block symbol}
    \label{fig:ports}
 \end{figure}
@@ -242,17 +243,17 @@ for different mode configurations.
    \end{eqnarray}
 
    \subsection{Circular Vectoring Mode}
-   
+
       The valid input range for $x_i$ and $y_i$ is $-\alpha ... +\alpha$.
       The angular input $a_i$ is ignored.
-   
+
    \subsection{Circular Rotation Mode}
       The valid input range for $x_i$ and $y_i$ is $-\alpha ... +\alpha$.
       For the angular input $a_i$, values between $-\beta\pi$ and $+\beta\pi$ are valid.
       For calculating a complex rotation of a complex vector, all three inputs
       are required. For calculating $\sin$ and $\cos$, $x_i$ is set to $\alpha$
       and $y_i$ to 0, the angle input $a_i$ gets the angle.
-   
+
    \subsection{Linear Vectoring Mode}
       The linear vectoring mode is used to calculate $y_i / x_i$. The limitation
       of this operation is the following:
@@ -260,7 +261,7 @@ for different mode configurations.
          \frac{y_i}{x_i} \le 2
       \end{eqnarray}
       The valid input values for $x_i$ and $y_i$ are $-\alpha ... +\alpha$.
-   
+
    \subsection{Linear Rotation Mode}
       The two inputs $x_i$ and $y_i$ have a valid data range between $-\alpha$ and $+\alpha$.
 
@@ -276,7 +277,7 @@ for different mode configurations.
 \section{Internal Operation}
 \begin{figure}[p]
 \centering
-   \includegraphics[width=200pt]{figs/state_diagram.pdf}
+   \includegraphics[width=300pt]{figs/state_diagram.pdf}
    \caption{State diagram}
    \label{fig:states}
 \end{figure}
@@ -302,69 +303,69 @@ the mode). The last state \state{ST\_DONE} is only used to set the done flag to
    \subsection{Initialization}
    During the initialization state ST\_INIT, pre-rotations are done, depending on 
    the selected mode.
-   
-   
+
+
       \subsubsection{Circular Vectoring Mode}
       Because we support atan2 and not atan, we do the following pre-rotations. 
       Some specific input values don't need a further processing, for 
       example $atan( 0, 0 )$.\newline\newline
          \begin{tabular}{@{}lp{380pt}@{}}
             \rowcolor{tableheadcolor}\textbf{Input} &\textbf{ Description }  \\
-      
+
             $x_i = 0, y_i = 0$    &    Fixed result: $x_o =  0, a_o = 0$,   
             to support cartesian to polar coordinate transformations, 
             further processing is skipped  \\ \midrule
-      
+
             $x_i = 0, y_i > 0 $   &    Fixed result: $x_o =  y_i, a_o = \pi/2$,  
             further processing is skipped \\ \midrule
-      
+
             $x_i = 0, y_i < 0 $   &    Fixed result: $x_o = -y_i, a_o = -\pi/2$,  
             further processing is skipped \\ \midrule
-      
-      
+
+
             $x_i < 0, y_i < 0 $   &    Pre-rotation from the third to the first quadrant,
                                        the angular register is initialized with $-\pi$ and
                                        the sign of the $x$ and $y$ register is flipped. \\ \midrule
-      
+
             $x_i < 0, y_i \ge 0 $   &    Pre-rotation from the second to the fourth quadrant,
                                        the angular register is initialized with $\pi$ and
                                        the sign of the $x$ and $y$ register is flipped. \\ \midrule
-      
-      
+
+
             $x_i = + \alpha, y_i = + \alpha $   &  Fixed result: $x_o = \sqrt{2} \cdot \alpha, a_o = \frac{\pi}{4} \cdot \beta$ ,
             further processing is skipped \\ \midrule
-      
+
             $x_i = + \alpha, y_i = - \alpha $   &  Fixed result: $x_o = \sqrt{2} \cdot \alpha, a_o = - \frac{\pi}{4} \cdot \beta$, 
             further processing is skipped \\ \midrule
-      
+
             $x_i = - \alpha, y_i = + \alpha $   &  Fixed result: $x_o = \sqrt{2} \cdot \alpha, a_o =  \frac{3 \pi}{4} \cdot \beta$, 
             further processing is skipped \\ \midrule
-      
+
             $x_i = - \alpha, y_i = - \alpha $   &  Fixed result: $x_o = \sqrt{2} \cdot \alpha, a_o = - \frac{3 \pi }{4} \cdot \beta$ ,
             further processing is skipped \\ 
             \bottomrule
          \end{tabular}
-      
+
       \subsubsection{Circular Rotation Mode}
       The following pre-rotations are done:\newline\newline
          \begin{tabular}{@{}lp{380pt}@{}}
             \rowcolor{tableheadcolor}\textbf{Input} &\textbf{ Description }  \\
-      
+
             $a_i < - \frac{\pi}{2}$    & Pre-rotation from the third to the first quadrant, 
                                          the sign of the $x$ and $y$ register is flipped, 
                                          the angular register is initialized with $\pi$   \\ \midrule
-      
+
             $a_i >   \frac{\pi}{2}$    & Pre-rotation from the second to the fourth quadrant, 
                                          the sign of the $x$ and $y$ register is flipped, 
                                          the angular register is initialized with $-\pi$   \\
             \bottomrule
          \end{tabular}
-      
+
       \subsubsection{Linear Vectoring Mode}
       The following pre-rotations are done:\newline\newline
          \begin{tabular}{@{}lp{380pt}@{}}
             \rowcolor{tableheadcolor}\textbf{Input} &\textbf{ Description }  \\
-      
+
             $x_i < 0$          & Pre-rotation from the left half to the right half, thus
                                  the sign of the $x$ and $y$ register is flipped \\
             \bottomrule
@@ -493,15 +494,3 @@ The performance is evaluated through the matlab script \file{cordic\_iterative\_
 \end{document}
 
 
-%
-%
-% Opencores Description
-%
-% For this project GIT is preferred as revision control and therefore, the files under development are located on https://github.com/feddischson/yac.
-% Nevertheless, stable intermediate steps are place here on SVN.
-% 
-%
-%
-%
-%
-%

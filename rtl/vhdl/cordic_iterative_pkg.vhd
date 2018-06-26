@@ -8,7 +8,7 @@
 ----  Target         :                                                  ----
 ----                                                                    ----
 ----  Author(s):     : Christian Haettich                               ----
-----  Email          : feddischson@opencores.org                        ----
+----  Email          : feddischson@gmail.com                            ----
 ----                                                                    ----
 ----                                                                    ----
 -----                                                                  -----
@@ -59,8 +59,8 @@ use ieee.numeric_std.ALL;
 
 package cordic_pkg is
 
-   
-   
+
+
    constant I_FLAG_VEC_ROT      : natural :=  3;  -- bit index
    constant I_FLAG_ATAN_3       : natural :=  2;  -- bit index (for future usage)
    constant VAL_MODE_CIR      : std_logic_vector( 1 downto 0 ) :=  "00";  -- value

@@ -8,7 +8,7 @@
 ----  Target         :                                                  ----
 ----                                                                    ----
 ----  Author(s):     : Christian Haettich                               ----
-----  Email          : feddischson@opencores.org                        ----
+----  Email          : feddischson@gmail.com                            ----
 ----                                                                    ----
 ----                                                                    ----
 -----                                                                  -----
