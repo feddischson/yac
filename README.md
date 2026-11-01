@@ -26,15 +26,22 @@ The following six CORDIC modes are supported:
  - hyperbolic vectoring
 
 
-Furthermore, the CORDIC algorithm is implemented for iterative 
-processing which means, that the IP-core is started 
+The iterative core (`cordic_iterative_int`) is started 
 with a set of input data and after a specific amount of 
 clock cycles, the result is 
-available. No parallel data can be processed. 
+available. No parallel data can be processed by the iterative core.
+
+The pipelined core (`cordic_pipeline_int`) does circular rotation only. 
+It accepts a new sample every clock cycle and has a fixed latency of 
+`1 + N_ITER + RM_GAIN` clocks. The angle is a binary angle: 
+`a_i` is an unsigned fraction of a full circle. 
 
 In addition to an IP-core written in VHDL, a bit-accurate C-model 
-is provided. This C-model can be compiled as mex for a usage with Octave or 
-Matlab. Therefore, this C-model allows a bit-accurate analysis 
+is provided for each core. The C-model of the iterative core can be 
+compiled as mex for a usage with Octave or 
+Matlab. The C-model of the pipelined core is plain C99 with a Python (`ctypes`, 
+`numpy`) wrapper and needs neither Octave nor Matlab. 
+Therefore, the C-models allow a bit-accurate analysis 
 of the CORDIC performance on a higher level. 
 
 
@@ -52,6 +59,14 @@ Status
 - Wishbone-bus wrapper is added
 - Included into a small SoC, tested on a spartan-3 FPGA
 - Testing within an SOC is done (see `./test_sys`)
+- Pipelined rotation core: C-model, Python wrapper and RTL are done.
+  The RTL is compared bit-exactly with the C-model in 77 VUnit tests (Questa),
+  and the C-model is compared with the exact rotation (`./test/model/run.py`).
+  The default generics are placeholders, not set by an FFT accuracy measurement.
+- Pipelined rotation core, synthesis on Cyclone V 5CSEBA6U23I7 (Quartus 23.1,
+  default generics, no pin assignments): 524 ALMs, 1068 registers, no DSP
+  blocks, no block memory, Fmax 269.91 MHz in the slow 1100 mV 100 C model and
+  256.34 MHz in the slow 1100 mV -40 C model, indicative only
 
 
 
@@ -73,10 +88,34 @@ Files and folders:
                   (cordic_iterative_test.m).
                   The file cordic_iterative_code.m is used to create some
                   VHDL/C-code automatically.
+  - `./c_model`   contains the bit-accurate C-implementation of the pipelined core
+                  (`cordic_pipeline.c`), its `ctypes` wrapper
+                  (`cordic_pipeline.py`) and the table generator
+                  (`gen_tables.py`), which writes `cordic_pipeline_tables.h`
+                  and `rtl/vhdl/cordic_pipeline_pkg.vhd`.
   - `./rtl/vhdl`  Contains the VHDL implementation files
-  - `./doc`       Will contain a detailed documentation in future.
+  - `./test`      Contains the tests of the pipelined core: `model/run.py`
+                  (C-model against the exact rotation) and `pipeline/run.py`
+                  (VUnit, RTL against the C-model).
+  - `./doc`       Contains the documentation (`documentation.tex`, `documentation.pdf`).
   - `./test_sys`  Contains a test system to test the YAC on a spartan-3an board
 
+
+
+Running the tests of the pipelined core
+=========================================
+
+Create a Python environment with `python3 -m venv <dir>` and install
+`py_requirements.txt`. The tests need gcc. `pipeline/run.py` needs Questa
+in the `PATH`, and both scripts build the C-model into their output directory.
+
+```
+<dir>/bin/python test/model/run.py --out <scratch>/model
+<dir>/bin/python test/pipeline/run.py -o <scratch>/vunit -p 8
+```
+
+`model/run.py` ends with `OK` and writes `sweep.csv` (accuracy over the
+generics) into its output directory. `pipeline/run.py` ends with `All passed!`.
 
 
 References

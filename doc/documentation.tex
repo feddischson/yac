@@ -55,6 +55,12 @@ IP core and C-model documentation
 
 \dirtree{%
 .1 /.
+.2 c\_model.
+.3 cordic\_pipeline.c\DTcomment{C-code of the bit accurate model of the pipelined core}.
+.3 cordic\_pipeline.h\DTcomment{C header of the pipelined model}.
+.3 cordic\_pipeline.py\DTcomment{Python (ctypes) wrapper of the pipelined model}.
+.3 cordic\_pipeline\_tables.h\DTcomment{Generated tables, do not edit}.
+.3 gen\_tables.py\DTcomment{Generates cordic\_pipeline\_tables.h and cordic\_pipeline\_pkg.vhd}.
 .2 c\_octave.
 .3 cordic\_iterative.c\DTcomment{C-code for bit accurate model}.
 .3 cordic\_iterative\_code.m\DTcomment{Script to auto-generate VHDL and C-code}.
@@ -62,12 +68,21 @@ IP core and C-model documentation
 .2 doc.\DTcomment{Contains files to create this documentation}.
 .2 licenses.
 .3 lgpl-3.0.txt\DTcomment{LGPL license}.
-.2 README.txt\DTcomment{A short read-me file}.
+.2 README.md\DTcomment{A short read-me file}.
 .2 rtl.
 .3 vhdl.
+.4 cordic\_pipeline\_int.vhd\DTcomment{Pipelined core}.
+.4 cordic\_pipeline\_pkg.vhd\DTcomment{Pipelined core package, generated}.
+.4 tb\_cordic\_pipeline.vhd\DTcomment{VUnit testbench of the pipelined core}.
 .4 cordic\_iterative\_int.vhd\DTcomment{Top-level VHDL file}.
 .4 cordic\_iterative\_pkg.vhd\DTcomment{VHDL package file}.
 .4 cordic\_iterative\_tb.vhd\DTcomment{VHDL testbench}.
+.2 test.
+.3 cordic\_test\_common.py\DTcomment{Shared helpers of the pipelined tests}.
+.3 model.
+.4 run.py\DTcomment{C-model against the exact rotation, writes the sweep}.
+.3 pipeline.
+.4 run.py\DTcomment{VUnit, RTL against the C-model}.
 }
 
 \section{License}
@@ -103,7 +118,8 @@ The two files \file{cordic\_iterative\_int.vhd} and \file{cordic\_iterative\_pkg
 implements an iterative CORDIC algorithm in fixed-point format. 
 Iterative means, that the IP-core is started with a set of input data and after
 a specific amount of clock cycles, the result is available. No parallel data
-can be processed. The 
+can be processed by this core; the pipelined core of chapter \ref{chap:pipeline}
+does that. The 
 following six modes are supported:
 \begin{itemize}
    \item trigonometric rotation
@@ -452,8 +468,187 @@ In YAC, a different sheme was chosen: the rotations are done until
 \end{itemize}
 This results in a dynamic iterations adaption, depending the the input data width.
 
+\chapter{Pipelined Core}
+\label{chap:pipeline}
+\sloppy
+
+The entity \file{cordic\_pipeline\_int} in \file{cordic\_pipeline\_int.vhd} is an unrolled
+CORDIC for circular rotation. It accepts a new sample every clock cycle and has a fixed
+latency. It uses \file{numeric\_std} only, with no vendor primitives. The package
+\file{cordic\_pipeline\_pkg.vhd} holds the angle table, the gain-removal terms and the
+function \signal{cordic\_pipeline\_latency( N\_ITER, RM\_GAIN )}.
+The iterative core and its package are not used by the pipelined core.
+
+\section{Port Description}
+\begin{table}[htbp]
+   \center\small
+   \begin{tabular}{@{}llllp{90pt}@{}}
+      \rowcolor{tableheadcolor}\textbf{Name}& \textbf{Type} & \textbf{Direction} & \textbf{Size} & \textbf{Description} \\
+
+      clk     & std\_logic         & input  & 1 & clock, rising edge \\\midrule
+      rst     & std\_logic         & input  & 1 & synchronous reset, active high \\\midrule
+      en      & std\_logic         & input  & 1 & clock-enable, freezes the whole pipeline \\\midrule
+      valid\_i & std\_logic        & input  & 1 & $x_i, y_i, a_i$ carry a sample \\\midrule
+      x\_i    & std\_logic\_vector & input  & XY\_WIDTH                & real part, two's complement \\\midrule
+      y\_i    & std\_logic\_vector & input  & XY\_WIDTH                & imaginary part, two's complement \\\midrule
+      a\_i    & std\_logic\_vector & input  & A\_WIDTH                 & binary angle \\\midrule
+      valid\_o & std\_logic        & output & 1 & $x_o, y_o$ carry a result \\\midrule
+      x\_o    & std\_logic\_vector & output & XY\_WIDTH + GUARD\_BITS  & real part of the result \\\midrule
+      y\_o    & std\_logic\_vector & output & XY\_WIDTH + GUARD\_BITS  & imaginary part of the result \\
+      \bottomrule
+   \end{tabular}
+   \caption{Port description of the pipelined core}
+   \label{tab:pipe_ports}
+\end{table}
+
+\section{Parameter Description}
+The entity asserts the ranges with severity failure.
+\begin{table}[htbp]
+   \center\small
+   \begin{tabular}{@{}lllp{200pt}@{}}
+      \rowcolor{tableheadcolor}\textbf{Name}& \textbf{Default} & \textbf{Range} & \textbf{Description} \\
+
+      XY\_WIDTH   & 16 & $\ge 2$  & width of $x_i$ and $y_i$ \\\midrule
+      A\_WIDTH    & 18 & 3 to 32  & angle width, $2^{A\_WIDTH}$ is a full circle \\\midrule
+      GUARD\_BITS & 2  & $\ge 0$  & MSB guard bits \\\midrule
+      LSB\_BITS   & 0  & $\ge 0$  & internal fraction bits, dropped at the output by truncation \\\midrule
+      N\_ITER     & 16 & 1 to 32  & CORDIC iterations \\\midrule
+      RM\_GAIN    & 4  & 0 to 12  & gain-removal terms, 0 means no removal \\
+      \bottomrule
+   \end{tabular}
+   \caption{Parameters of the pipelined core}
+   \label{tab:pipe_params}
+\end{table}
+In addition, $XY\_WIDTH + GUARD\_BITS + LSB\_BITS$ is at most 62. The angle table has
+32 entries of 32 bits ($\mathrm{TABLE\_WIDTH} = 32$); the core uses the top $A\_WIDTH$ bits of
+each entry. The default values are placeholders: the FFT accuracy that should set them has not
+been measured yet.
+
+\section{Behaviour}
+\begin{itemize}
+   \item \textbf{Binary angle.} $a_i$ is an unsigned fraction of a full circle and wraps at
+         $2^{A\_WIDTH}$. A positive angle rotates counter-clockwise.
+   \item \textbf{Quadrant step.} The top two bits of $a_i$ select a rotation by 0, 90, 180 or
+         270 degrees through swap and negate in the first stage. The remaining
+         $A\_WIDTH-2$ bits are the residual angle.
+   \item \textbf{Iterations.} Every sample passes all $N\_ITER$ stages, with no early stop.
+         Stage $i$ computes $x' = x \mp (y \gg i)$, $y' = y \pm (x \gg i)$ and
+         adds or subtracts $\mathrm{atan}(2^{-i})$ from the residual, with the sign taken from the
+         residual. $\gg$ is an arithmetic shift that truncates.
+         The table entry is
+         $\mathrm{round}( \mathrm{atan}(2^{-i}) / (2\pi) \cdot 2^{TABLE\_WIDTH} )$.
+   \item \textbf{Word width.} Internally $XY\_WIDTH + GUARD\_BITS + LSB\_BITS$ bits.
+   \item \textbf{Guard bits.} The vector length is at most $\sqrt{2} \cdot 2^{XY\_WIDTH-1}$ and the
+         CORDIC gain is 1.647, so the intermediate value stays below $2^{XY\_WIDTH+1}$ and two guard
+         bits are enough. An exhaustive check over all $x$, $y$ and angle values compared the output with
+         two guard bits against the output with eight, for $XY\_WIDTH$ = 5 to 8, $A\_WIDTH$ = 6 and 8,
+         $N\_ITER$ = 8, 16, 32, $RM\_GAIN$ = 0, 4, 12 and $LSB\_BITS$ = 0, 1, 4. The word does not wrap
+         from $XY\_WIDTH = 6$. At $XY\_WIDTH = 5$ it wraps only at $N\_ITER = 32$ with $LSB\_BITS = 0$,
+         and at 2 to 4 bits it wraps in some of the configurations (30, 18 and 12 of 54). Wider $XY\_WIDTH$ and $A\_WIDTH$ are not covered by the
+         exhaustive check.
+   \item \textbf{Gain removal.} One pipeline stage per term, with the shift-and-add terms of
+         \signal{cordic\_int\_rm\_gain()} of the iterative model. $RM\_GAIN = 0$ leaves the gain 1.647.
+         The gain after removal is not exactly 1; it is listed in table \ref{tab:pipe_acc}.
+   \item \textbf{Latency.} $1 + N\_ITER + RM\_GAIN$ clocks: the quadrant stage, the iterations
+         and the gain stages.
+   \item \textbf{Reset.} Synchronous, on the valid chain only. The data registers have no reset.
+         The data at $x_o$ and $y_o$ is defined only while \signal{valid\_o} = '1'. The valid chain has
+         no initial value, so \signal{valid\_o} is 'U' in simulation until the first rising edge with
+         \signal{rst} = '1'. One clock of \signal{rst} with a running clock is enough, whatever \signal{en} is.
+\end{itemize}
+
+\subsection{Valid and clock-enable}
+\signal{valid\_o} is \signal{valid\_i} delayed by the latency. With \signal{en} = '0' the whole pipeline, including the
+valid chain, holds its state, so \signal{valid\_o} and the data stay unchanged. A sample is
+therefore taken at an edge where \signal{valid\_o} = '1' \emph{and} \signal{en} = '1': a consumer qualifies
+\signal{valid\_o} with \signal{en}. Otherwise it takes the same sample at every frozen edge.
+\signal{rst} wins over \signal{en} on the valid chain.
+
+\signal{valid\_i} is taken only at an edge with \signal{en} = '1', so a producer holds its sample
+while \signal{en} = '0'. A delay line for sideband data, such as RAM addresses, uses the same
+\signal{en}, because the latency counts enabled clocks.
+
+\section{C-Model and Python Wrapper}
+\file{cordic\_pipeline.c} is plain C99 with no global state and no \file{mex} dependency.
+\signal{cordic\_pipeline()} rotates one sample and \signal{cordic\_pipeline\_array()} an array.
+They return an error code for an invalid configuration or for $x_i$, $y_i$ outside the signed
+$XY\_WIDTH$ range. The model builds with \texttt{-Wall -Wextra -Werror} and, as a
+check, with \texttt{-std=c99 -pedantic}.
+\file{cordic\_pipeline.py} loads the shared library with \file{ctypes} and has \file{numpy}
+arrays at its interface; all arithmetic stays in C. The path of the library is an argument of
+\signal{CordicPipeline}. The angle table and the gain-removal terms are written by
+\file{gen\_tables.py} into \file{cordic\_pipeline\_tables.h} and \file{cordic\_pipeline\_pkg.vhd};
+\texttt{gen\_tables.py --check} exits with 1 if either file is not current.
+
+\section{Verification}
+\begin{itemize}
+   \item \texttt{test/model/run.py --out <dir>}: 30 unit tests of the model, the wrapper and the
+         tables, and a sweep of the model against the exact rotation. It ends with \texttt{OK} and
+         writes \file{sweep.csv}.
+   \item \texttt{test/pipeline/run.py -o <dir>}: VUnit with Questa. A \texttt{pre\_config} hook
+         runs the model and writes stimulus and expected data, and the testbench compares
+         $x_o$ and $y_o$ exactly for each valid sample. It runs 7 tests in 11 generic sets
+         (77 tests): consecutive samples, gaps, \signal{en} toggling, the measured latency, and a
+         reset in the stream and while frozen. \texttt{test\_reset\_resume} holds \signal{valid\_i} = '1'
+         through a one-clock reset while streaming and requires \signal{valid\_o} = '0' afterwards, so that the
+         sample offered at the reset edge never appears. It then reopens the expected file, streams the whole
+         stimulus again from its start with random \signal{en}, and requires every sample to compare exactly and
+         exactly $N\_SAMPLES$ to arrive. The vectors include all four full-scale corners with
+         $-2^{XY\_WIDTH-1}$, zero, and the quadrant boundaries with one LSB on either side.
+         The sets include $RM\_GAIN$ = 0 and 12, $LSB\_BITS$ = 0 and above, and two sets in which the word
+         wraps. It ends with \texttt{All passed!}.
+\end{itemize}
+
+\section{Accuracy}
+\label{sec:pipe_acc}
+\file{sweep.csv} lists $XY\_WIDTH$ in 12, 14, 16, $A\_WIDTH$ in 16 to 24, $LSB\_BITS$ in 0 to 6,
+$N\_ITER$ in 8 to 20 and $RM\_GAIN$ in 0 to 12 (3360 rows). Each row has 20000 uniform
+full-scale inputs. The error is the magnitude $|dx + i\,dy|$ in output LSB against the exact
+rotation multiplied by the nominal gain of the configuration. The gain error itself is
+therefore not in the numbers; the column \emph{gain} is the nominal gain.
+\begin{table}[htbp]
+   \center\small
+   \begin{tabular}{@{}lllll@{}}
+      \rowcolor{tableheadcolor}\textbf{XY,A,LSB,N,RM} & \textbf{Latency} & \textbf{Gain} & \textbf{rms} & \textbf{max} \\
+      16,18,0,16,0   & 17 & 1.646760 & 3.72 & 18.41 \\\midrule
+      16,18,0,16,4 (default) & 21 & 0.997062 & 2.44 & 12.16 \\\midrule
+      16,18,0,16,12  & 29 & 1.000000 & 6.29 & 15.76 \\\midrule
+      16,18,2,16,4   & 21 & 0.997062 & 1.59 & 7.50 \\\midrule
+      14,18,0,10,4   & 15 & 0.997061 & 7.69 & 23.26 \\\midrule
+      16,24,6,20,12  & 33 & 1.000000 & 0.74 & 1.39 \\
+      \bottomrule
+   \end{tabular}
+   \caption{Error against the exact rotation, in LSB, from the sweep of \texttt{test/model/run.py}}
+   \label{tab:pipe_acc}
+\end{table}
+$RM\_GAIN = 4$ leaves a gain of 0.997062, so an input of full scale is 0.3 \% short of the
+exact length on top of the listed error. In the sweep the error does not fall monotonically with $RM\_GAIN$: at 16,18,0,16 the rms is 1.73 LSB for $RM\_GAIN$ = 2 and 6.29 LSB for 12.
+A measurement with 200000 samples at $XY\_WIDTH$ = 16, $A\_WIDTH$ = 18, $LSB\_BITS$ = 0, $N\_ITER$ = 16 gives a mean
+error per component of +0.27, +1.28 and +3.27 LSB at $RM\_GAIN$ = 4, 6 and 12, with an rms of 2.44, 3.10 and 6.29 LSB;
+with the mean removed the rms is 2.41, 2.52 and 4.25 LSB. At $LSB\_BITS$ = 2 and $RM\_GAIN$ = 12 the offset falls to
+0.45 LSB. Confirmed: a growing DC offset accounts for part of the rise. Inferred, not measured: each truncating term
+has a bias, and the terms at high $RM\_GAIN$ are mostly negative. Above about $RM\_GAIN$ = 4, more terms therefore need
+$LSB\_BITS$.
+
+\section{Synthesis}
+Quartus 23.1, Cyclone V 5CSEBA6U23I7, slow 1100 mV 100 C and -40 C models, a scratch project with a 5 ns
+clock constraint and no pin assignments. The Fmax is therefore indicative only.
+\begin{table}[htbp]
+   \center\small
+   \begin{tabular}{@{}lllllll@{}}
+      \rowcolor{tableheadcolor}\textbf{Generics} & \textbf{ALMs} & \textbf{Regs} & \textbf{DSP} & \textbf{RAM} & \textbf{Fmax 100 C} & \textbf{Fmax -40 C} \\
+      16,18,2,0,16,4 (default) & 524 & 1068 & 0 & 0 & 269.91 MHz & 256.34 MHz \\\midrule
+      14,18,2,0,10,4 (stand-in) & 327 & 676  & 0 & 0 & 276.32 MHz & 267.31 MHz \\
+      \bottomrule
+   \end{tabular}
+   \caption{Synthesis results}
+   \label{tab:pipe_synth}
+\end{table}
+The generics are XY\_WIDTH, A\_WIDTH, GUARD\_BITS, LSB\_BITS, N\_ITER, RM\_GAIN; RAM is block memory bits. The second set is a stand-in, because the parameters of the FFT that uses the core are open.
+
+\fussy
 \chapter{Performance}
-The performance is evaluated through the matlab script \file{cordic\_iterative\_test.m}.
+The performance of the pipelined core is in chapter \ref{chap:pipeline}. The performance of the iterative core is evaluated through the matlab script \file{cordic\_iterative\_test.m}.
 
 
 \chapter{Open issues and future work}
