@@ -1,5 +1,5 @@
 # This file is part of YAC - Yet Another CORDIC Core
-# Copyright (c) 2014, Author(s), All rights reserved.
+# Copyright (c) 2026, Author(s), All rights reserved.
 #
 # YAC is free software; you can redistribute it and/or modify it under the
 # terms of the GNU Lesser General Public License as published by the Free
