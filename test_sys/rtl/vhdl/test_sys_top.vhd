@@ -154,7 +154,7 @@ ri_pad_i  <= '0';
 
 -- led_p : process( clk_i )
 -- begin
---   if clk_i'event and clk_i='1' then
+--   if rising_edge( clk_i ) then
 --     LED <= SW & BTN_NORTH & BTN_EAST & BTN_SOUTH & BTN_WEST;
 --   end if;
 -- end process;

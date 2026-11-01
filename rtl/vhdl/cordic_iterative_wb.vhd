@@ -293,7 +293,7 @@ begin
 
   begin
 
-    if clk_i'event and clk_i='1' then
+    if rising_edge( clk_i ) then
       if rst_i = '1' then
         addr           <= ( others => '0' );
         b3_trans       <= WB_NO_BURST;
@@ -387,7 +387,7 @@ begin
     variable MEM_START : integer;
   begin
 
-    if clk_i'event and clk_i='1' then
+    if rising_edge( clk_i ) then
       if rst_i = '1' then
         MEM <= ( others => ( others => '0' ) );
         state <= ( st  => ST_IDLE,

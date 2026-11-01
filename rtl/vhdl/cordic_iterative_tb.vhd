@@ -212,7 +212,7 @@ begin
     start   <= '0';
     wait for clk_T * 20;
 
-    wait until clk'event and clk='1';
+    wait until rising_edge( clk );
 
     while ( not endfile( test_pattern_file ) )loop
 
@@ -242,7 +242,7 @@ begin
         start <= '0';
 
         wait until done = '1';
-        wait until clk'event and clk='1';
+        wait until rising_edge( clk );
         stim_cnt := stim_cnt+1;
 
         if x_ex /= x_o or 
