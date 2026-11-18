@@ -60,6 +60,7 @@ generic(
    LSB_BITS         : natural;
    N_ITER           : natural;
    RM_GAIN          : natural;
+   VECTORING        : boolean;
    EXPECTED_LATENCY : natural;
    N_SAMPLES        : natural
        );
@@ -83,6 +84,7 @@ architecture BEHAVIORAL of tb_cordic_pipeline is
    signal valid_o : std_logic;
    signal x_o     : std_logic_vector( XY_WIDTH+GUARD_BITS-1 downto 0 );
    signal y_o     : std_logic_vector( XY_WIDTH+GUARD_BITS-1 downto 0 );
+   signal a_o     : std_logic_vector( A_WIDTH-1 downto 0 );
 
    signal en_main      : std_logic := '1';
    signal en_rand      : std_logic := '1';
@@ -103,7 +105,8 @@ begin
       GUARD_BITS => GUARD_BITS,
       LSB_BITS   => LSB_BITS,
       N_ITER     => N_ITER,
-      RM_GAIN    => RM_GAIN
+      RM_GAIN    => RM_GAIN,
+      VECTORING  => VECTORING
               )
    port map(
       clk     => clk,
@@ -115,7 +118,8 @@ begin
       a_i     => a_i,
       valid_o => valid_o,
       x_o     => x_o,
-      y_o     => y_o
+      y_o     => y_o,
+      a_o     => a_o
            );
 
 
@@ -139,6 +143,7 @@ begin
       variable l          : line;
       variable x_e        : std_logic_vector( x_o'range );
       variable y_e        : std_logic_vector( y_o'range );
+      variable a_e        : std_logic_vector( a_o'range );
       variable count      : natural   := 0;
       variable frozen     : boolean   := false;
       variable valid_last : std_logic := '0';
@@ -166,8 +171,10 @@ begin
             readline( expected, l );
             read( l, x_e );
             read( l, y_e );
+            read( l, a_e );
             check_equal( x_o, x_e, "x_o of sample " & to_string( count ) );
             check_equal( y_o, y_e, "y_o of sample " & to_string( count ) );
+            check_equal( a_o, a_e, "a_o of sample " & to_string( count ) );
             count        := count + 1;
             samples_seen <= count;
          end if;

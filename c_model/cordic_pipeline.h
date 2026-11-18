@@ -13,7 +13,8 @@
 
 /**
  * @file cordic_pipeline.h
- * @brief Bit-accurate model of the pipelined CORDIC (circular rotation).
+ * @brief Bit-accurate model of the pipelined CORDIC (circular rotation and
+ * vectoring).
  */
 
 #ifndef CORDIC_PIPELINE_H_
@@ -76,5 +77,41 @@ int32_t cordic_pipeline_array(const cordic_pipeline_cfg_t* cfg,
                               const int64_t* x_i, const int64_t* y_i,
                               const int64_t* a_i, int64_t* x_o, int64_t* y_o,
                               size_t n);
+
+/**
+ * @brief Converts one sample to magnitude and angle (vectoring).
+ * @details x_o is the magnitude times the gain of the configuration, y_o is
+ * close to zero.
+ * @param cfg Configuration.
+ * @param x_i Real part, signed xy_width bits.
+ * @param y_i Imaginary part, signed xy_width bits.
+ * @param x_o Result, signed xy_width + guard_bits bits, not negative
+ * unless the word wraps (see the guard-bit check in the documentation).
+ * @param y_o Result, signed xy_width + guard_bits bits.
+ * @param a_o Angle of x_i + j y_i as a fraction of a full circle, 0 to
+ * 2^a_width - 1.
+ * @return CORDIC_PIPELINE_OK or an error code. The outputs are written only on
+ * success.
+ */
+int32_t cordic_pipeline_vec(const cordic_pipeline_cfg_t* cfg, int64_t x_i,
+                            int64_t y_i, int64_t* x_o, int64_t* y_o,
+                            int64_t* a_o);
+
+/**
+ * @brief Converts n samples with cordic_pipeline_vec().
+ * @param cfg Configuration, see cordic_pipeline_vec().
+ * @param x_i Input x of n samples.
+ * @param y_i Input y of n samples.
+ * @param x_o Result x of n samples, signed xy_width + guard_bits bits.
+ * @param y_o Result y of n samples, signed xy_width + guard_bits bits.
+ * @param a_o Result angle of n samples, 0 to 2^a_width - 1.
+ * @param n Number of samples.
+ * @return CORDIC_PIPELINE_OK or the first error code. The outputs of the
+ * samples before the error are written.
+ */
+int32_t cordic_pipeline_vec_array(const cordic_pipeline_cfg_t* cfg,
+                                  const int64_t* x_i, const int64_t* y_i,
+                                  int64_t* x_o, int64_t* y_o, int64_t* a_o,
+                                  size_t n);
 
 #endif /* CORDIC_PIPELINE_H_ */

@@ -16,6 +16,7 @@ import numpy as np
 
 _INT64_MIN = -(2**63)
 _INT64_MAX = 2**63 - 1
+_ERR_RANGE = -2  # CORDIC_PIPELINE_ERR_RANGE
 
 
 class _Cfg(ctypes.Structure):
@@ -53,6 +54,9 @@ class CordicPipeline:
         self._lib.cordic_pipeline_array.argtypes = [
             ctypes.POINTER(_Cfg), p64, p64, p64, p64, p64, ctypes.c_size_t]
         self._lib.cordic_pipeline_array.restype = ctypes.c_int32
+        self._lib.cordic_pipeline_vec_array.argtypes = [
+            ctypes.POINTER(_Cfg), p64, p64, p64, p64, p64, ctypes.c_size_t]
+        self._lib.cordic_pipeline_vec_array.restype = ctypes.c_int32
         self._cfg = _Cfg(xy_width, a_width, guard_bits, lsb_bits, n_iter,
                          rm_gain)
         latency = self._lib.cordic_pipeline_latency(ctypes.byref(self._cfg))
@@ -64,24 +68,30 @@ class CordicPipeline:
     def latency(self):
         return self._latency
 
-    def rotate(self, x, y, a):
-        """Rotates x + jy by the binary angle a. Returns (x_o, y_o) as int64 arrays."""
-        xs, ys, az = np.broadcast_arrays(
-            _as_int64(x, "x"), _as_int64(y, "y"), _as_int64(a, "a"))
-        shape = xs.shape
-        xs = np.ascontiguousarray(xs, dtype=np.int64).ravel()
-        ys = np.ascontiguousarray(ys, dtype=np.int64).ravel()
-        az = np.ascontiguousarray(az, dtype=np.int64).ravel()
-        xo = np.zeros(xs.size, dtype=np.int64)
-        yo = np.zeros(xs.size, dtype=np.int64)
-        if xs.size:
+    def _run(self, fn, inputs, n_out):
+        """Broadcasts the inputs, calls the C array function fn and returns n_out int64 arrays."""
+        arrays = np.broadcast_arrays(*inputs)
+        shape = arrays[0].shape
+        flat = [np.ascontiguousarray(a, dtype=np.int64).ravel() for a in arrays]
+        size = flat[0].size
+        outs = [np.zeros(size, dtype=np.int64) for _ in range(n_out)]
+        if size:
             p64 = ctypes.POINTER(ctypes.c_int64)
-            err = self._lib.cordic_pipeline_array(
-                ctypes.byref(self._cfg), xs.ctypes.data_as(p64),
-                ys.ctypes.data_as(p64), az.ctypes.data_as(p64),
-                xo.ctypes.data_as(p64), yo.ctypes.data_as(p64), xs.size)
-            if err == -2:
+            err = fn(ctypes.byref(self._cfg),
+                     *[a.ctypes.data_as(p64) for a in flat + outs], size)
+            if err == _ERR_RANGE:
                 raise ValueError("x or y outside the signed xy_width range")
             if err < 0:
                 raise ValueError("invalid configuration or argument")
-        return xo.reshape(shape), yo.reshape(shape)
+        return tuple(o.reshape(shape) for o in outs)
+
+    def rotate(self, x, y, a):
+        """Rotates x + jy by the binary angle a. Returns (x_o, y_o) as int64 arrays."""
+        return self._run(
+            self._lib.cordic_pipeline_array,
+            (_as_int64(x, "x"), _as_int64(y, "y"), _as_int64(a, "a")), 2)
+
+    def vector(self, x, y):
+        """Converts x + jy to magnitude and angle. Returns (x_o, y_o, a_o) as int64 arrays."""
+        return self._run(self._lib.cordic_pipeline_vec_array,
+                         (_as_int64(x, "x"), _as_int64(y, "y")), 3)

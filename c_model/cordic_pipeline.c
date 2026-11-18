@@ -13,7 +13,8 @@
 
 /**
  * @file cordic_pipeline.c
- * @brief Bit-accurate model of the pipelined CORDIC (circular rotation).
+ * @brief Bit-accurate model of the pipelined CORDIC (circular rotation and
+ * vectoring).
  */
 
 #include "cordic_pipeline.h"
@@ -44,6 +45,29 @@ static int64_t cordic_pipeline_wrap(uint64_t u, int32_t width) {
   return (int64_t)(u ^ sign) - (int64_t)sign;
 }
 
+static void cordic_pipeline_rm_gain(const cordic_pipeline_cfg_t* cfg,
+                                    int32_t width, int64_t* x, int64_t* y) {
+  uint64_t sum_x = 0;
+  uint64_t sum_y = 0;
+  int32_t i;
+  if (cfg->rm_gain == 0) return;
+  for (i = 0; i < cfg->rm_gain; i++) {
+    const cordic_pipeline_term_t* term =
+        &cordic_pipeline_terms[cfg->rm_gain][i];
+    const uint64_t vx = (uint64_t)(*x >> term->shift);
+    const uint64_t vy = (uint64_t)(*y >> term->shift);
+    if (term->sign > 0) {
+      sum_x += vx;
+      sum_y += vy;
+    } else {
+      sum_x -= vx;
+      sum_y -= vy;
+    }
+  }
+  *x = cordic_pipeline_wrap(sum_x, width);
+  *y = cordic_pipeline_wrap(sum_y, width);
+}
+
 int32_t cordic_pipeline_latency(const cordic_pipeline_cfg_t* cfg) {
   if (!cordic_pipeline_cfg_valid(cfg)) return (int32_t)CORDIC_PIPELINE_ERR_CFG;
   return 1 + cfg->n_iter + cfg->rm_gain;
@@ -53,7 +77,7 @@ int32_t cordic_pipeline(const cordic_pipeline_cfg_t* cfg, int64_t x_i,
                         int64_t y_i, int64_t a_i, int64_t* x_o, int64_t* y_o) {
   int64_t limit;
   int64_t x, y, t, resid;
-  uint64_t a, sum_x, sum_y;
+  uint64_t a;
   int32_t i, q, shift, width;
 
   if (!cordic_pipeline_cfg_valid(cfg) || x_o == NULL || y_o == NULL)
@@ -107,28 +131,71 @@ int32_t cordic_pipeline(const cordic_pipeline_cfg_t* cfg, int64_t x_i,
     x = cordic_pipeline_wrap((uint64_t)t, width);
   }
 
-  if (cfg->rm_gain > 0) {
-    sum_x = 0;
-    sum_y = 0;
-    for (i = 0; i < cfg->rm_gain; i++) {
-      const cordic_pipeline_term_t* term =
-          &cordic_pipeline_terms[cfg->rm_gain][i];
-      const uint64_t vx = (uint64_t)(x >> term->shift);
-      const uint64_t vy = (uint64_t)(y >> term->shift);
-      if (term->sign > 0) {
-        sum_x += vx;
-        sum_y += vy;
-      } else {
-        sum_x -= vx;
-        sum_y -= vy;
-      }
-    }
-    x = cordic_pipeline_wrap(sum_x, width);
-    y = cordic_pipeline_wrap(sum_y, width);
-  }
+  cordic_pipeline_rm_gain(cfg, width, &x, &y);
 
   *x_o = x >> cfg->lsb_bits;
   *y_o = y >> cfg->lsb_bits;
+  return (int32_t)CORDIC_PIPELINE_OK;
+}
+
+int32_t cordic_pipeline_vec(const cordic_pipeline_cfg_t* cfg, int64_t x_i,
+                            int64_t y_i, int64_t* x_o, int64_t* y_o,
+                            int64_t* a_o) {
+  int64_t limit;
+  int64_t x, y, t;
+  uint64_t a, amask;
+  int32_t i, shift, width;
+
+  if (!cordic_pipeline_cfg_valid(cfg) || x_o == NULL || y_o == NULL ||
+      a_o == NULL)
+    return (int32_t)CORDIC_PIPELINE_ERR_CFG;
+  width = cfg->xy_width + cfg->guard_bits + cfg->lsb_bits;
+  limit = INT64_C(1) << (cfg->xy_width - 1);
+  if (x_i < -limit || x_i >= limit || y_i < -limit || y_i >= limit)
+    return (int32_t)CORDIC_PIPELINE_ERR_RANGE;
+
+  amask = (UINT64_C(1) << cfg->a_width) - 1U;
+  x = cordic_pipeline_wrap((uint64_t)(x_i * ((int64_t)1 << cfg->lsb_bits)),
+                           width);
+  y = cordic_pipeline_wrap((uint64_t)(y_i * ((int64_t)1 << cfg->lsb_bits)),
+                           width);
+
+  if (x >= 0) {
+    a = 0;
+  } else if (y >= 0) {
+    t = x;
+    x = y;
+    y = cordic_pipeline_wrap((uint64_t)(-t), width);
+    a = UINT64_C(1) << (cfg->a_width - 2);
+  } else {
+    t = x;
+    x = cordic_pipeline_wrap((uint64_t)(-y), width);
+    y = t;
+    a = UINT64_C(3) << (cfg->a_width - 2);
+  }
+
+  shift = 32 - cfg->a_width;
+  for (i = 0; i < cfg->n_iter; i++) {
+    const uint64_t at = cordic_pipeline_atan[i] >> shift;
+    const int64_t dx = y >> i;
+    const int64_t dy = x >> i;
+    if (y >= 0) {
+      t = x + dx;
+      y = cordic_pipeline_wrap((uint64_t)(y - dy), width);
+      a = (a + at) & amask;
+    } else {
+      t = x - dx;
+      y = cordic_pipeline_wrap((uint64_t)(y + dy), width);
+      a = (a - at) & amask;
+    }
+    x = cordic_pipeline_wrap((uint64_t)t, width);
+  }
+
+  cordic_pipeline_rm_gain(cfg, width, &x, &y);
+
+  *x_o = x >> cfg->lsb_bits;
+  *y_o = y >> cfg->lsb_bits;
+  *a_o = (int64_t)a;
   return (int32_t)CORDIC_PIPELINE_OK;
 }
 
@@ -144,6 +211,23 @@ int32_t cordic_pipeline_array(const cordic_pipeline_cfg_t* cfg,
   if (!cordic_pipeline_cfg_valid(cfg)) return (int32_t)CORDIC_PIPELINE_ERR_CFG;
   for (k = 0; k < n; k++) {
     err = cordic_pipeline(cfg, x_i[k], y_i[k], a_i[k], &x_o[k], &y_o[k]);
+    if (err != CORDIC_PIPELINE_OK) return err;
+  }
+  return (int32_t)CORDIC_PIPELINE_OK;
+}
+
+int32_t cordic_pipeline_vec_array(const cordic_pipeline_cfg_t* cfg,
+                                  const int64_t* x_i, const int64_t* y_i,
+                                  int64_t* x_o, int64_t* y_o, int64_t* a_o,
+                                  size_t n) {
+  size_t k;
+  int32_t err;
+  if (n > 0 &&
+      (x_i == NULL || y_i == NULL || x_o == NULL || y_o == NULL || a_o == NULL))
+    return (int32_t)CORDIC_PIPELINE_ERR_CFG;
+  if (!cordic_pipeline_cfg_valid(cfg)) return (int32_t)CORDIC_PIPELINE_ERR_CFG;
+  for (k = 0; k < n; k++) {
+    err = cordic_pipeline_vec(cfg, x_i[k], y_i[k], &x_o[k], &y_o[k], &a_o[k]);
     if (err != CORDIC_PIPELINE_OK) return err;
   }
   return (int32_t)CORDIC_PIPELINE_OK;

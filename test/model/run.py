@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT / "test"))
 
 import gen_tables  # noqa: E402
 import numpy as np  # noqa: E402
-from cordic_test_common import build_library, directed_vectors  # noqa: E402
+from cordic_test_common import (  # noqa: E402
+    build_library, directed_vectors, directed_vectoring_vectors)
 
 OUT = None
 LIB = None
@@ -112,6 +113,100 @@ def nominal_gain(n_iter=16, rm_gain=4):
         if rm_gain else g
 
 
+def vec(c, x, y):
+    xo, yo, ao = c.vector(x, y)
+    return int(xo), int(yo), int(ao)
+
+
+def vec_bounds(cfg):
+    """Returns the vectoring error bounds of cfg as a function of the input.
+
+    :param cfg: (xy_width, a_width, lsb_bits, n_iter, rm_gain)
+    :return: f(x, y) giving (m, gm, x_tol, y_tol, a_tol) with the magnitude m,
+        the expected magnitude gm = G*m, the tolerances of x_o - gm and y_o,
+        and the angle tolerance in angle LSB (None below m = 2^(xy_width-3))
+    """
+    xy_width, a_width, lsb_bits, n_iter, rm_gain = cfg
+    e = 2.0 ** -lsb_bits
+    r = math.atan(2.0 ** -(n_iter - 1))
+    gain = nominal_gain(n_iter, rm_gain)
+    g_n = nominal_gain(n_iter, 0)
+
+    def bounds(x, y):
+        m = math.hypot(x, y)
+        gm = gain * m
+        x_tol = (n_iter + rm_gain) * e + 1 + gm * (1 - math.cos(r))
+        y_tol = gm * math.sin(r) + (n_iter + rm_gain) * e + 1
+        a_tol = None
+        if m >= 2.0 ** (xy_width - 3):
+            a_tol = ((r + (n_iter + 2) * e / (g_n * m)) * 2.0 ** a_width
+                     / (2 * math.pi) + n_iter + 1)
+        return m, gm, x_tol, y_tol, a_tol
+
+    return bounds
+
+
+def vec_angle_error(a_o, x, y, a_width):
+    """Returns |a_o - atan2(y, x)| in angle LSB, wrapped to (-2^(A-1), 2^(A-1)]."""
+    exact = np.arctan2(y, x) / (2 * np.pi) * 2.0**a_width
+    d = np.mod(a_o - exact, 2.0**a_width)
+    d = np.where(d > 2.0**(a_width - 1), d - 2.0**a_width, d)
+    return np.abs(d)
+
+
+def vec_exact_error(cfg, n=20000):
+    """Compares the vectoring model with the exact magnitude and angle.
+
+    :param cfg: (xy_width, a_width, lsb_bits, n_iter, rm_gain)
+    :param n: number of random full-scale samples, seed 12345
+    :return: (rms_mag, max_mag, fitted_gain, max_angle_excess): rms and maximum
+        of |x_o - G*M| in output LSB, the least-squares gain of x_o against M,
+        and the largest angle error minus its bound over the samples with a
+        bound
+    """
+    xy_width, a_width, lsb_bits, n_iter, rm_gain = cfg
+    c = cordic(xy_width=xy_width, a_width=a_width, lsb_bits=lsb_bits,
+               n_iter=n_iter, rm_gain=rm_gain)
+    rng = np.random.default_rng(12345)
+    x = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), n)
+    y = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), n)
+    xo, _, ao = c.vector(x, y)
+    m = np.hypot(x, y)
+    err = np.abs(xo - nominal_gain(n_iter, rm_gain) * m)
+    fitted = float(np.dot(xo, m) / np.dot(m, m))
+    bounds = vec_bounds(cfg)
+    ang = vec_angle_error(ao, x, y, a_width)
+    excess = [ang[k] - bounds(int(x[k]), int(y[k]))[4] for k in range(n)
+              if bounds(int(x[k]), int(y[k]))[4] is not None]
+    return (float(np.sqrt(np.mean(err**2))), float(np.max(err)), fitted,
+            float(max(excess)))
+
+
+def vec_sweep_row(cfg, n=20000):
+    """Measures the vectoring model against the exact magnitude and angle.
+
+    :param cfg: (xy_width, a_width, lsb_bits, n_iter, rm_gain)
+    :param n: number of random full-scale samples, seed 12345
+    :return: (rms_mag, max_mag, fitted_gain, rms_ang, max_ang): rms and maximum
+        of |x_o - G*M| in output LSB, the least-squares gain of x_o against M,
+        and rms and maximum of the angle error in angle LSB over the samples
+        with M >= 2^(xy_width-3)
+    """
+    xy_width, a_width, lsb_bits, n_iter, rm_gain = cfg
+    c = cordic(xy_width=xy_width, a_width=a_width, lsb_bits=lsb_bits,
+               n_iter=n_iter, rm_gain=rm_gain)
+    rng = np.random.default_rng(12345)
+    x = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), n)
+    y = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), n)
+    xo, _, ao = c.vector(x, y)
+    m = np.hypot(x, y)
+    err = np.abs(xo - nominal_gain(n_iter, rm_gain) * m)
+    fitted = float(np.dot(xo, m) / np.dot(m, m))
+    ang = vec_angle_error(ao, x, y, a_width)[m >= 2.0 ** (xy_width - 3)]
+    return (float(np.sqrt(np.mean(err**2))), float(np.max(err)), fitted,
+            float(np.sqrt(np.mean(ang**2))), float(np.max(ang)))
+
+
 SWEEP_XY_WIDTH = (12, 14, 16)
 SWEEP_A_WIDTH = (16, 18, 20, 22, 24)
 SWEEP_LSB_BITS = (0, 2, 4, 6)
@@ -120,7 +215,11 @@ SWEEP_RM_GAIN = (0, 1, 2, 3, 4, 6, 8, 12)
 SWEEP_COLUMNS = ("xy_width", "a_width", "lsb_bits", "n_iter", "rm_gain",
                  "latency", "nominal_gain", "fitted_gain", "rms_lsb",
                  "max_lsb")
+SWEEP_VEC_COLUMNS = ("xy_width", "a_width", "lsb_bits", "n_iter", "rm_gain",
+                     "latency", "nominal_gain", "fitted_gain", "rms_mag_lsb",
+                     "max_mag_lsb", "rms_ang_lsb", "max_ang_lsb")
 SWEEP = None
+SWEEP_VEC = None
 
 
 def exact_error(cfg, n=20000):
@@ -169,6 +268,32 @@ def run_sweep(out):
                             f.write("%d,%d,%d,%d,%d,%d,%.6f,%.6f,%.4f,%.4f\n"
                                     % (xw, aw, lsb, n_iter, r, lat,
                                        nominal_gain(n_iter, r), fit, rms, mx))
+    return path
+
+
+def run_sweep_vec(out):
+    """Writes the vectoring accuracy sweep over the generic grid to out/sweep_vec.csv.
+
+    :param out: output directory
+    :return: path of sweep_vec.csv
+    """
+    path = out / "sweep_vec.csv"
+    with path.open("w") as f:
+        f.write(",".join(SWEEP_VEC_COLUMNS) + "\n")
+        for xw in SWEEP_XY_WIDTH:
+            for aw in SWEEP_A_WIDTH:
+                for lsb in SWEEP_LSB_BITS:
+                    for n_iter in SWEEP_N_ITER:
+                        for r in SWEEP_RM_GAIN:
+                            rms, mx, fit, arms, amx = vec_sweep_row(
+                                (xw, aw, lsb, n_iter, r))
+                            lat = cordic(xy_width=xw, a_width=aw, lsb_bits=lsb,
+                                         n_iter=n_iter, rm_gain=r).latency
+                            f.write("%d,%d,%d,%d,%d,%d,%.6f,%.6f,%.4f,%.4f,"
+                                    "%.4f,%.4f\n"
+                                    % (xw, aw, lsb, n_iter, r, lat,
+                                       nominal_gain(n_iter, r), fit, rms, mx,
+                                       arms, amx))
     return path
 
 
@@ -341,6 +466,153 @@ class TestDirectedVectors(unittest.TestCase):
     def test_values_overlap(self):
         self.check_vectors(8, 3, set(range(8)))
 
+    def test_vectoring_vectors(self):
+        x, y = directed_vectoring_vectors(16)
+        m = 2**15
+        self.assertEqual((x.dtype, y.dtype), (np.int64, np.int64))
+        pairs = list(zip(x.tolist(), y.tolist()))
+        self.assertEqual(len(pairs), len(set(pairs)))
+        self.assertEqual(set(pairs), {
+            (-m, -m), (-m, m - 1), (m - 1, -m), (m - 1, m - 1), (0, 0),
+            (m - 1, 0), (-m, 0), (0, m - 1), (0, -m),
+            (-1, 0), (-1, -1), (-1, 1), (0, -1), (0, 1), (1, 0)})
+
+
+class TestVectoring(unittest.TestCase):
+    DEFAULT = (16, 18, 0, 16, 4)
+
+    def check_bounds(self, cfg, x, y, xo, yo, ao):
+        xy_width, a_width = cfg[0], cfg[1]
+        bounds = vec_bounds(cfg)
+        ang = vec_angle_error(np.asarray(ao), np.asarray(x), np.asarray(y),
+                              a_width)
+        for k in range(len(x)):
+            m, gm, x_tol, y_tol, a_tol = bounds(int(x[k]), int(y[k]))
+            msg = (cfg, int(x[k]), int(y[k]), int(xo[k]), int(yo[k]),
+                   int(ao[k]))
+            self.assertLessEqual(abs(xo[k] - gm), x_tol, msg)
+            self.assertLessEqual(abs(yo[k]), y_tol, msg)
+            self.assertGreaterEqual(xo[k], 0, msg)
+            self.assertTrue(0 <= ao[k] < 2**a_width, msg)
+            if a_tol is not None:
+                self.assertLessEqual(ang[k], a_tol, msg)
+
+    def test_vec_axes(self):
+        cfg = (16, 18, 0, 16, 0)
+        c = cordic(rm_gain=0)
+        bounds = vec_bounds(cfg)
+        v = 2**15 - 1
+        for (x, y), a in [((v, 0), 0), ((0, v), 2**16), ((-v, 0), 2**17),
+                          ((0, -v), 3 * 2**16)]:
+            xo, yo, ao = vec(c, x, y)
+            m, gm, x_tol, y_tol, a_tol = bounds(x, y)
+            self.assertLessEqual(abs(xo - gm), x_tol, (x, y, xo))
+            diff = (ao - a + 2**17) % 2**18 - 2**17
+            self.assertLessEqual(abs(diff), a_tol, (x, y, ao))
+
+    def test_vec_halfplane_boundary(self):
+        c = cordic()
+        bounds = vec_bounds(self.DEFAULT)
+        s = 2**14
+        for (x, y), a in [((-s, 0), 2**17), ((-s, -s), 2**17 + 2**15),
+                          ((-s, s), 2**17 - 2**15),
+                          ((-s, -1), 2**17 + round(
+                              math.atan(2.0**-14) / (2 * math.pi) * 2**18))]:
+            _, _, ao = vec(c, x, y)
+            self.assertLessEqual(abs(ao - a), bounds(x, y)[4], (x, y, ao))
+
+    def test_vec_most_negative(self):
+        c = cordic()
+        m, h = -2**15, 2**15 - 1
+        x, y = np.array([m, m, h, h]), np.array([m, h, m, h])
+        xo, yo, ao = c.vector(x, y)
+        self.check_bounds(self.DEFAULT, x, y, xo, yo, ao)
+        self.assertTrue(np.all(np.abs(xo) < 2**17))
+        self.assertTrue(np.all(np.abs(yo) < 2**17))
+
+    def test_vec_zero(self):
+        xo, yo, ao = vec(cordic(), 0, 0)
+        self.assertEqual((xo, yo), (0, 0))
+        self.assertTrue(0 <= ao < 2**18)
+
+    def test_vec_bounds_random(self):
+        for cfg in [(16, 18, 0, 16, 4), (12, 18, 0, 10, 0), (16, 24, 6, 20, 12),
+                    (8, 10, 0, 12, 4)]:
+            xy_width, a_width, lsb_bits, n_iter, rm_gain = cfg
+            c = cordic(xy_width=xy_width, a_width=a_width, lsb_bits=lsb_bits,
+                       n_iter=n_iter, rm_gain=rm_gain)
+            rng = np.random.default_rng(12345)
+            x = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), 20000)
+            y = rng.integers(-2**(xy_width - 1), 2**(xy_width - 1), 20000)
+            dx, dy = directed_vectoring_vectors(xy_width)
+            x, y = np.concatenate([x, dx]), np.concatenate([y, dy])
+            xo, yo, ao = c.vector(x, y)
+            self.check_bounds(cfg, x, y, xo, yo, ao)
+            self.assertLessEqual(vec_exact_error(cfg)[3], 0.0, cfg)
+
+    def test_vec_fsa_gain(self):
+        cfg = (12, 18, 0, 10, 0)
+        rms, mx, fitted, _ = vec_exact_error(cfg)
+        self.assertAlmostEqual(fitted, nominal_gain(10, 0), delta=1e-3)
+        self.assertLess(rms, 3.0)
+        self.assertLess(mx, 16)
+
+    def test_vec_guard_bits(self):
+        def differing(xy_width, a_width, n_iter, rm_gain, lsb_bits):
+            kw = dict(xy_width=xy_width, a_width=a_width, n_iter=n_iter,
+                      rm_gain=rm_gain, lsb_bits=lsb_bits)
+            v = np.arange(-2**(xy_width - 1), 2**(xy_width - 1))
+            x, y = np.meshgrid(v, v)
+            r2 = cordic(guard_bits=2, **kw).vector(x, y)
+            r8 = cordic(guard_bits=8, **kw).vector(x, y)
+            return not all(np.array_equal(p, q) for p, q in zip(r2, r8))
+
+        grid = [(a, n, r, lsb) for a in (6, 8) for n in (8, 16, 32)
+                for r in (0, 4, 12) for lsb in (0, 1, 4)]
+        for xy_width in (6, 7, 8):
+            for g in grid:
+                self.assertFalse(differing(xy_width, *g), (xy_width, g))
+        diff5 = [g for g in grid if differing(5, *g)]
+        print("\nvectoring guard bits, XY_WIDTH=5, (A,N,RM,LSB) differing "
+              "at 2 against 8 guard bits: %d of %d: %s"
+              % (len(diff5), len(grid), diff5))
+
+    def test_vec_array_equals_scalar(self):
+        c = cordic()
+        rng = np.random.default_rng(1)
+        x = rng.integers(-2**15, 2**15, 1000)
+        y = rng.integers(-2**15, 2**15, 1000)
+        xo, yo, ao = c.vector(x, y)
+        for i in range(1000):
+            self.assertEqual((int(xo[i]), int(yo[i]), int(ao[i])),
+                             vec(c, int(x[i]), int(y[i])))
+
+    def test_vec_input_range(self):
+        c = cordic()
+        with self.assertRaises(ValueError):
+            c.vector(2**15, 0)
+        with self.assertRaises(ValueError):
+            c.vector(0, -2**15 - 1)
+        c.vector(-2**15, 0)
+
+    def test_vec_wrapper_float_input(self):
+        c = cordic()
+        with self.assertRaises(TypeError):
+            c.vector(1.5, 0)
+        with self.assertRaises(TypeError):
+            c.vector(0, np.array([1.0]))
+
+    def test_vec_wrapper_scalar_and_shape(self):
+        c = cordic()
+        xo, yo, ao = c.vector(1000, 5)
+        self.assertEqual((xo.shape, yo.shape, ao.shape), ((), (), ()))
+        rng = np.random.default_rng(2)
+        x = rng.integers(-2000, 2000, (3, 5))
+        y = rng.integers(-2000, 2000, (3, 5))
+        xo, yo, ao = c.vector(x, y)
+        self.assertEqual((xo.shape, yo.shape, ao.shape), ((3, 5),) * 3)
+        self.assertEqual((xo.dtype, yo.dtype, ao.dtype), (np.int64,) * 3)
+
 
 class TestAccuracy(unittest.TestCase):
     def test_high_precision(self):
@@ -374,6 +646,11 @@ class TestAccuracy(unittest.TestCase):
         self.assertEqual(lines[0], ",".join(SWEEP_COLUMNS))
         self.assertEqual(len(lines) - 1, 3360)
 
+    def test_sweep_vec_csv(self):
+        lines = SWEEP_VEC.read_text().splitlines()
+        self.assertEqual(lines[0], ",".join(SWEEP_VEC_COLUMNS))
+        self.assertEqual(len(lines) - 1, 3360)
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -382,8 +659,9 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     global OUT
     OUT = args.out.resolve()
-    global SWEEP
+    global SWEEP, SWEEP_VEC
     SWEEP = run_sweep(OUT)
+    SWEEP_VEC = run_sweep_vec(OUT)
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1

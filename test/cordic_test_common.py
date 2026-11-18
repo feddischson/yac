@@ -58,3 +58,25 @@ def directed_vectors(xy_width: int, a_width: int) -> Vectors:
     rows = [(x, y, a) for x, y in inputs for a in sorted(angles)]
     x, y, a = np.array(rows, dtype=np.int64).T
     return x, y, a
+
+
+def directed_vectoring_vectors(
+    xy_width: int,
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64]]:
+    """Returns the directed vectoring inputs, each pair once.
+
+    Inputs are the four full-scale corners, (0, 0), the four axis points at
+    full scale and the pairs next to the origin on the half-plane boundary.
+
+    :param xy_width: input width in bits
+    :type xy_width: int
+    :return: x and y, of equal length
+    :rtype: tuple[npt.NDArray[np.int64], npt.NDArray[np.int64]]
+    """
+    low = -(2 ** (xy_width - 1))
+    high = 2 ** (xy_width - 1) - 1
+    pairs = [(low, low), (low, high), (high, low), (high, high), (0, 0),
+             (high, 0), (low, 0), (0, high), (0, low),
+             (-1, 0), (-1, -1), (-1, 1), (0, -1), (0, 1), (1, 0)]
+    x, y = np.array(sorted(set(pairs)), dtype=np.int64).T
+    return x, y

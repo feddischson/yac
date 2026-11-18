@@ -80,7 +80,7 @@ IP core and C-model documentation
 .2 test.
 .3 cordic\_test\_common.py\DTcomment{Shared helpers of the pipelined tests}.
 .3 model.
-.4 run.py\DTcomment{C-model against the exact rotation, writes the sweep}.
+.4 run.py\DTcomment{C-model against the exact rotation and vectoring, writes the sweeps}.
 .3 pipeline.
 .4 run.py\DTcomment{VUnit, RTL against the C-model}.
 }
@@ -473,7 +473,7 @@ This results in a dynamic iterations adaption, depending the the input data widt
 \sloppy
 
 The entity \file{cordic\_pipeline\_int} in \file{cordic\_pipeline\_int.vhd} is an unrolled
-CORDIC for circular rotation. It accepts a new sample every clock cycle and has a fixed
+CORDIC for circular rotation or, selected by the generic \signal{VECTORING}, circular vectoring. It accepts a new sample every clock cycle and has a fixed
 latency. It uses \file{numeric\_std} only, with no vendor primitives. The package
 \file{cordic\_pipeline\_pkg.vhd} holds the angle table, the gain-removal terms and the
 function \signal{cordic\_pipeline\_latency( N\_ITER, RM\_GAIN )}.
@@ -491,10 +491,11 @@ The iterative core and its package are not used by the pipelined core.
       valid\_i & std\_logic        & input  & 1 & $x_i, y_i, a_i$ carry a sample \\\midrule
       x\_i    & std\_logic\_vector & input  & XY\_WIDTH                & real part, two's complement \\\midrule
       y\_i    & std\_logic\_vector & input  & XY\_WIDTH                & imaginary part, two's complement \\\midrule
-      a\_i    & std\_logic\_vector & input  & A\_WIDTH                 & binary angle \\\midrule
-      valid\_o & std\_logic        & output & 1 & $x_o, y_o$ carry a result \\\midrule
+      a\_i    & std\_logic\_vector & input  & A\_WIDTH                 & binary angle, ignored in vectoring \\\midrule
+      valid\_o & std\_logic        & output & 1 & $x_o, y_o, a_o$ carry a result \\\midrule
       x\_o    & std\_logic\_vector & output & XY\_WIDTH + GUARD\_BITS  & real part of the result \\\midrule
-      y\_o    & std\_logic\_vector & output & XY\_WIDTH + GUARD\_BITS  & imaginary part of the result \\
+      y\_o    & std\_logic\_vector & output & XY\_WIDTH + GUARD\_BITS  & imaginary part of the result \\\midrule
+      a\_o    & std\_logic\_vector & output & A\_WIDTH                 & rotation: all zeros; vectoring: angle of $x_i + i\,y_i$ \\
       \bottomrule
    \end{tabular}
    \caption{Port description of the pipelined core}
@@ -513,7 +514,8 @@ The entity asserts the ranges with severity failure.
       GUARD\_BITS & 2  & $\ge 0$  & MSB guard bits \\\midrule
       LSB\_BITS   & 0  & $\ge 0$  & internal fraction bits, dropped at the output by truncation \\\midrule
       N\_ITER     & 16 & 1 to 32  & CORDIC iterations \\\midrule
-      RM\_GAIN    & 4  & 0 to 12  & gain-removal terms, 0 means no removal \\
+      RM\_GAIN    & 4  & 0 to 12  & gain-removal terms, 0 means no removal \\\midrule
+      VECTORING   & false & boolean & false: rotation, true: vectoring \\
       \bottomrule
    \end{tabular}
    \caption{Parameters of the pipelined core}
@@ -538,21 +540,44 @@ been measured yet.
          The table entry is
          $\mathrm{round}( \mathrm{atan}(2^{-i}) / (2\pi) \cdot 2^{TABLE\_WIDTH} )$.
    \item \textbf{Word width.} Internally $XY\_WIDTH + GUARD\_BITS + LSB\_BITS$ bits.
-   \item \textbf{Guard bits.} The vector length is at most $\sqrt{2} \cdot 2^{XY\_WIDTH-1}$ and the
+   \item \textbf{Guard bits.} In rotation, and in vectoring as stated at the end of this item, the vector length is at most $\sqrt{2} \cdot 2^{XY\_WIDTH-1}$ and the
          CORDIC gain is 1.647, so the intermediate value stays below $2^{XY\_WIDTH+1}$ and two guard
          bits are enough. An exhaustive check over all $x$, $y$ and angle values compared the output with
          two guard bits against the output with eight, for $XY\_WIDTH$ = 5 to 8, $A\_WIDTH$ = 6 and 8,
          $N\_ITER$ = 8, 16, 32, $RM\_GAIN$ = 0, 4, 12 and $LSB\_BITS$ = 0, 1, 4. The word does not wrap
          from $XY\_WIDTH = 6$. At $XY\_WIDTH = 5$ it wraps only at $N\_ITER = 32$ with $LSB\_BITS = 0$,
          and at 2 to 4 bits it wraps in some of the configurations (30, 18 and 12 of 54). Wider $XY\_WIDTH$ and $A\_WIDTH$ are not covered by the
-         exhaustive check.
+         exhaustive check. Vectoring has the same bound. The same exhaustive check over all $x$ and $y$
+         (the angle does not enter), with the parameter sets above, finds no wrapping at $XY\_WIDTH$ = 6 to 8;
+         at $XY\_WIDTH = 5$ it wraps in 6 of 54 configurations, all with $N\_ITER = 32$ and $LSB\_BITS = 0$.
+         $XY\_WIDTH$ 2 to 4 is not checked for vectoring.
+   \item \textbf{Vectoring.} With $VECTORING$ = true the core computes magnitude and angle of
+         $(x_i, y_i)$ and ignores $a_i$. $x_o$ is the gain times $\sqrt{x^2+y^2}$, $y_o$ is a
+         residual near zero and $a_o$ is $\mathrm{atan2}(y, x)$ as an unsigned binary angle in
+         $[0, 2^{A\_WIDTH})$, the format of $a_i$.
+         \begin{itemize}
+            \item The first stage keeps a vector with $x \ge 0$ and sets the angle to 0. For $x < 0$, $y \ge 0$ it
+                  gives $(y, -x)$ with the angle $2^{A\_WIDTH-2}$ (90 degrees); for $x < 0$, $y < 0$ it gives
+                  $(-y, x)$ with the angle $3 \cdot 2^{A\_WIDTH-2}$ (270 degrees). The vector is then in the
+                  right half-plane, inside the convergence range of $\pm 99.9$ degrees.
+            \item Stage $i$ takes its direction from the sign bit of $y$. For $y \ge 0$:
+                  $x' = x + (y \gg i)$, $y' = y - (x \gg i)$, $a' = a + \mathrm{atan}_i$; for $y < 0$:
+                  $x' = x - (y \gg i)$, $y' = y + (x \gg i)$, $a' = a - \mathrm{atan}_i$. $\mathrm{atan}_i$ is
+                  the table entry truncated to $A\_WIDTH$ bits; the angle accumulator has $A\_WIDTH$ bits and wraps
+                  modulo $2^{A\_WIDTH}$.
+            \item Gain removal acts on $x$ and $y$; the angle is delayed through those stages. Latency,
+                  handshake, \signal{en} and reset are those of rotation.
+            \item The input $(0, 0)$ gives $x_o = y_o = 0$ and an angle that model and RTL agree on and that
+                  carries no meaning.
+            \item An unconnected $a_o$ lets synthesis remove the angle registers (table \ref{tab:pipe_synth}).
+         \end{itemize}
    \item \textbf{Gain removal.} One pipeline stage per term, with the shift-and-add terms of
          \signal{cordic\_int\_rm\_gain()} of the iterative model. $RM\_GAIN = 0$ leaves the gain 1.647.
          The gain after removal is not exactly 1; it is listed in table \ref{tab:pipe_acc}.
    \item \textbf{Latency.} $1 + N\_ITER + RM\_GAIN$ clocks: the quadrant stage, the iterations
          and the gain stages.
    \item \textbf{Reset.} Synchronous, on the valid chain only. The data registers have no reset.
-         The data at $x_o$ and $y_o$ is defined only while \signal{valid\_o} = '1'. The valid chain has
+         The data at $x_o$, $y_o$ and $a_o$ is defined only while \signal{valid\_o} = '1'. The valid chain has
          no initial value, so \signal{valid\_o} is 'U' in simulation until the first rising edge with
          \signal{rst} = '1'. One clock of \signal{rst} with a running clock is enough, whatever \signal{en} is.
 \end{itemize}
@@ -571,30 +596,36 @@ while \signal{en} = '0'. A delay line for sideband data, such as RAM addresses, 
 \section{C-Model and Python Wrapper}
 \file{cordic\_pipeline.c} is plain C99 with no global state and no \file{mex} dependency.
 \signal{cordic\_pipeline()} rotates one sample and \signal{cordic\_pipeline\_array()} an array.
-They return an error code for an invalid configuration or for $x_i$, $y_i$ outside the signed
+\signal{cordic\_pipeline\_vec( cfg, x\_i, y\_i, x\_o, y\_o, a\_o )} and \signal{cordic\_pipeline\_vec\_array()}
+do the same for vectoring; \signal{cordic\_pipeline\_cfg\_t} is the same for both. All four return an error code for an invalid configuration or for $x_i$, $y_i$ outside the signed
 $XY\_WIDTH$ range. The model builds with \texttt{-Wall -Wextra -Werror} and, as a
 check, with \texttt{-std=c99 -pedantic}.
 \file{cordic\_pipeline.py} loads the shared library with \file{ctypes} and has \file{numpy}
 arrays at its interface; all arithmetic stays in C. The path of the library is an argument of
-\signal{CordicPipeline}. The angle table and the gain-removal terms are written by
+\signal{CordicPipeline}. \signal{rotate( x, y, a )} returns $(x_o, y_o)$ and
+\signal{vector( x, y )} returns $(x_o, y_o, a_o)$. The angle table and the gain-removal terms are written by
 \file{gen\_tables.py} into \file{cordic\_pipeline\_tables.h} and \file{cordic\_pipeline\_pkg.vhd};
 \texttt{gen\_tables.py --check} exits with 1 if either file is not current.
 
 \section{Verification}
 \begin{itemize}
-   \item \texttt{test/model/run.py --out <dir>}: 30 unit tests of the model, the wrapper and the
-         tables, and a sweep of the model against the exact rotation. It ends with \texttt{OK} and
-         writes \file{sweep.csv}.
+   \item \texttt{test/model/run.py --out <dir>}: 43 unit tests (12 of them for vectoring) of the model, the wrapper and the
+         tables, a sweep of the model against the exact rotation, a sweep against the exact vectoring, and the vectoring
+         tests of section \ref{sec:pipe_acc}. It takes about 40 s and ends with \texttt{OK} and
+         writes \file{sweep.csv} and \file{sweep\_vec.csv}.
    \item \texttt{test/pipeline/run.py -o <dir>}: VUnit with Questa. A \texttt{pre\_config} hook
          runs the model and writes stimulus and expected data, and the testbench compares
-         $x_o$ and $y_o$ exactly for each valid sample. It runs 7 tests in 11 generic sets
-         (77 tests): consecutive samples, gaps, \signal{en} toggling, the measured latency, and a
+         $x_o$, $y_o$ and $a_o$ exactly for each valid sample; in rotation sets $a_o$ must be zero.
+         It runs 7 tests in 16 generic sets (112 tests; 11 rotation sets and 5 vectoring sets, among them
+         $12,18,2,0,10,0$, a stand-in for the magnitude CORDIC of gnssr's fast acquisition) in about 116 s with 8 threads: consecutive samples, gaps, \signal{en} toggling, the measured latency, and a
          reset in the stream and while frozen. \texttt{test\_reset\_resume} holds \signal{valid\_i} = '1'
          through a one-clock reset while streaming and requires \signal{valid\_o} = '0' afterwards, so that the
          sample offered at the reset edge never appears. It then reopens the expected file, streams the whole
          stimulus again from its start with random \signal{en}, and requires every sample to compare exactly and
          exactly $N\_SAMPLES$ to arrive. The vectors include all four full-scale corners with
          $-2^{XY\_WIDTH-1}$, zero, and the quadrant boundaries with one LSB on either side.
+         The vectoring stimulus carries random $a_i$, which must not change the result, and the directed
+         vectoring vectors (corners, $(0, 0)$, axis points, points next to the half-plane boundary).
          The sets include $RM\_GAIN$ = 0 and 12, $LSB\_BITS$ = 0 and above, and two sets in which the word
          wraps. It ends with \texttt{All passed!}.
 \end{itemize}
@@ -630,21 +661,71 @@ with the mean removed the rms is 2.41, 2.52 and 4.25 LSB. At $LSB\_BITS$ = 2 and
 has a bias, and the terms at high $RM\_GAIN$ are mostly negative. Above about $RM\_GAIN$ = 4, more terms therefore need
 $LSB\_BITS$.
 
+\subsection{Vectoring}
+The model tests compare vectoring with the exact magnitude times the nominal gain and with
+$\mathrm{atan2}$. With $G$ the nominal gain, $M = |x + i\,y|$, $e = 2^{-LSB\_BITS}$ and
+$r = \mathrm{atan}(2^{-(N\_ITER-1)})$ the limits are derived from the algorithm:
+\[
+\begin{array}{l}
+   |x_o - G M| \le (N\_ITER + RM\_GAIN)\,e + 1 + G M (1 - \cos r),\\[2pt]
+   |y_o| \le G M \sin r + (N\_ITER + RM\_GAIN)\,e + 1,\\[2pt]
+   |\Delta a| \le \left(r + \frac{(N\_ITER+2)\,e}{g_N M}\right)\frac{2^{A\_WIDTH}}{2\pi} + N\_ITER + 1
+   \quad\mbox{for } M \ge 2^{XY\_WIDTH-3},
+\end{array}
+\]
+with $\Delta a$ in angle LSB, wrapped, and $g_N$ the CORDIC gain of $N\_ITER$ stages. The tests cover the axes,
+the half-plane boundary, the corners with $-2^{XY\_WIDTH-1}$, $(0, 0)$, $x_o \ge 0$, the fitted gain and
+the exhaustive guard-bit check. At the half-plane boundary the angle is checked at $(-s, y)$ with
+$s = 2^{XY\_WIDTH-2}$ and $y$ in $0$, $-1$, $\pm s$, which covers both sides of the switch of the start angle between
+90 and 270 degrees; the directed pairs at $x = -1$ have a length below $2^{XY\_WIDTH-3}$ and get the magnitude and
+$y_o$ checks only.
+
+\file{sweep\_vec.csv} has the same grid as \file{sweep.csv} (3360 rows) and the same 20000 samples per row, with the
+columns of the rotation sweep and the rms and maximum of $|x_o - G M|$ in output LSB and of the angle error in angle
+LSB, the angle error over the samples with $M \ge 2^{XY\_WIDTH-3}$.
+
+Measured with 20000 uniform full-scale samples (seed 12345) and the wrapper function \signal{vector};
+the error of $x_o$ is $x_o - G M$ in output LSB, the angle error is wrapped and in angle LSB
+(1 LSB $= 360 / 2^{18} = 0.00137$ degrees at $A\_WIDTH = 18$):
+\begin{table}[htbp]
+   \center\small
+   \begin{tabular}{@{}lll@{}}
+      \rowcolor{tableheadcolor}\textbf{XY,A,GUARD,LSB,N,RM} & \textbf{16,18,2,0,16,4} & \textbf{12,18,2,0,10,0 (stand-in)} \\
+      nominal gain $G$ & 0.997062 & 1.646759 \\\midrule
+      fitted gain & 0.997143 & 1.647499 \\\midrule
+      $x_o - GM$ rms / max / mean & 2.70 / 7.14 / +2.35 & 1.94 / 6.34 / +1.38 \\\midrule
+      $y_o$ rms / max & 0.34 / 3 & 3.20 / 11 \\\midrule
+      angle, $M \ge 2^{XY-3}$, rms / max & 2.05 / 15.2 & 52.3 / 231 \\\midrule
+      angle, all samples, rms / max & 3.70 / 216 & 65.5 / 3142 \\
+      \bottomrule
+   \end{tabular}
+   \caption{Vectoring error against the exact magnitude and angle; 12,18,2,0,10,0 is a stand-in for the magnitude CORDIC of gnssr's fast acquisition}
+   \label{tab:pipe_vec_acc}
+\end{table}
+The positive mean error is measured; its cause is not investigated. The angle error at $N\_ITER = 10$ is
+dominated by the residual $\mathrm{atan}(2^{-9})$, which is 81.5 angle LSB at $A\_WIDTH = 18$ (inferred from the
+bound, not isolated by a measurement). The large maxima over all samples belong to short vectors, where input
+quantisation limits the angle.
+
 \section{Synthesis}
 Quartus 23.1, Cyclone V 5CSEBA6U23I7, slow 1100 mV 100 C and -40 C models, a scratch project with a 5 ns
-clock constraint and no pin assignments. The Fmax is therefore indicative only.
+clock constraint (3 ns for the vectoring rows) and no pin assignments. The Fmax is therefore indicative only.
 \begin{table}[htbp]
    \center\small
    \begin{tabular}{@{}lllllll@{}}
       \rowcolor{tableheadcolor}\textbf{Generics} & \textbf{ALMs} & \textbf{Regs} & \textbf{DSP} & \textbf{RAM} & \textbf{Fmax 100 C} & \textbf{Fmax -40 C} \\
-      16,18,2,0,16,4 (default) & 524 & 1068 & 0 & 0 & 269.91 MHz & 256.34 MHz \\\midrule
-      14,18,2,0,10,4 (stand-in) & 327 & 676  & 0 & 0 & 276.32 MHz & 267.31 MHz \\
+      16,18,2,0,16,4 (default) & 524 & 1068 & 0 & 0 & 252.53 MHz & 243.78 MHz \\\midrule
+      14,18,2,0,10,4 (stand-in) & 327 & 676  & 0 & 0 & 276.32 MHz & 267.31 MHz \\\midrule
+      12,18,2,0,10,0 vec, a\_o used & 243 & 453 & 0 & 0 & 261.92 MHz & 251.57 MHz \\\midrule
+      12,18,2,0,10,0 vec, a\_o open & 177 & 317 & 0 & 0 & 282.97 MHz & 274.95 MHz \\
       \bottomrule
    \end{tabular}
    \caption{Synthesis results}
    \label{tab:pipe_synth}
 \end{table}
 The generics are XY\_WIDTH, A\_WIDTH, GUARD\_BITS, LSB\_BITS, N\_ITER, RM\_GAIN; RAM is block memory bits. The second set is a stand-in, because the parameters of the FFT that uses the core are open.
+The rows marked vec are the stand-in for the magnitude CORDIC of gnssr's fast acquisition, use \texttt{VECTORING} = true and have a top level that exposes only $x_o$, $y_o$, \signal{valid\_o} and, in the first row,
+$a_o$; with $a_o$ open Quartus removes 136 registers and 66 ALMs.
 
 \fussy
 \chapter{Performance}

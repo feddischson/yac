@@ -31,7 +31,8 @@ with a set of input data and after a specific amount of
 clock cycles, the result is 
 available. No parallel data can be processed by the iterative core.
 
-The pipelined core (`cordic_pipeline_int`) does circular rotation only. 
+The pipelined core (`cordic_pipeline_int`) does circular rotation, or with the generic
+`VECTORING = true` circular vectoring (magnitude and angle, output `a_o`).
 It accepts a new sample every clock cycle and has a fixed latency of 
 `1 + N_ITER + RM_GAIN` clocks. The angle is a binary angle: 
 `a_i` is an unsigned fraction of a full circle. 
@@ -59,14 +60,17 @@ Status
 - Wishbone-bus wrapper is added
 - Included into a small SoC, tested on a spartan-3 FPGA
 - Testing within an SOC is done (see `./test_sys`)
-- Pipelined rotation core: C-model, Python wrapper and RTL are done.
-  The RTL is compared bit-exactly with the C-model in 77 VUnit tests (Questa),
-  and the C-model is compared with the exact rotation (`./test/model/run.py`).
+- Pipelined core (rotation and vectoring): C-model, Python wrapper and RTL are done.
+  The RTL is compared bit-exactly with the C-model in 112 VUnit tests (Questa),
+  and the C-model is compared with the exact rotation and the exact vectoring
+  (`./test/model/run.py`).
   The default generics are placeholders, not set by an FFT accuracy measurement.
-- Pipelined rotation core, synthesis on Cyclone V 5CSEBA6U23I7 (Quartus 23.1,
+- Pipelined core, rotation, synthesis on Cyclone V 5CSEBA6U23I7 (Quartus 23.1,
   default generics, no pin assignments): 524 ALMs, 1068 registers, no DSP
-  blocks, no block memory, Fmax 269.91 MHz in the slow 1100 mV 100 C model and
-  256.34 MHz in the slow 1100 mV -40 C model, indicative only
+  blocks, no block memory, Fmax 252.53 MHz in the slow 1100 mV 100 C model and
+  243.78 MHz in the slow 1100 mV -40 C model, indicative only
+- Pipelined core, vectoring and further synthesis rows: see `./doc/documentation.pdf`,
+  chapter Pipelined Core, section Synthesis.
 
 
 
@@ -114,8 +118,8 @@ in the `PATH`, and both scripts build the C-model into their output directory.
 <dir>/bin/python test/pipeline/run.py -o <scratch>/vunit -p 8
 ```
 
-`model/run.py` ends with `OK` and writes `sweep.csv` (accuracy over the
-generics) into its output directory. `pipeline/run.py` ends with `All passed!`.
+`model/run.py` ends with `OK` and writes `sweep.csv` and `sweep_vec.csv` (rotation and
+vectoring accuracy over the generics) into its output directory. `pipeline/run.py` ends with `All passed!`.
 
 
 References

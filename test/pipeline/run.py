@@ -27,7 +27,12 @@ sys.path.insert(0, str(ROOT / "c_model"))
 sys.path.insert(0, str(ROOT / "test"))
 
 from cordic_pipeline import CordicPipeline  # noqa: E402
-from cordic_test_common import Vectors, build_library, directed_vectors  # noqa: E402
+from cordic_test_common import (  # noqa: E402
+    Vectors,
+    build_library,
+    directed_vectors,
+    directed_vectoring_vectors,
+)
 
 RTL = ROOT / "rtl" / "vhdl"
 N_RANDOM = 1000
@@ -44,20 +49,26 @@ class Config(NamedTuple):
     lsb_bits: int
     n_iter: int
     rm_gain: int
+    vectoring: bool
 
 
 CONFIGS = (
-    Config("default", 16, 18, 2, 0, 16, 4),
-    Config("rm0", 16, 18, 2, 0, 16, 0),
-    Config("rm12", 16, 18, 2, 0, 16, 12),
-    Config("lsb4", 16, 18, 2, 4, 16, 4),
-    Config("reference", 14, 18, 2, 0, 10, 4),
-    Config("wide", 24, 32, 2, 8, 32, 12),
-    Config("small", 6, 8, 2, 0, 8, 1),
-    Config("guard3", 12, 14, 3, 2, 14, 6),
-    Config("min_angle", 8, 3, 2, 0, 4, 2),
-    Config("guard1", 8, 10, 1, 0, 12, 4),
-    Config("narrow", 4, 8, 2, 0, 32, 0),
+    Config("default", 16, 18, 2, 0, 16, 4, False),
+    Config("rm0", 16, 18, 2, 0, 16, 0, False),
+    Config("rm12", 16, 18, 2, 0, 16, 12, False),
+    Config("lsb4", 16, 18, 2, 4, 16, 4, False),
+    Config("reference", 14, 18, 2, 0, 10, 4, False),
+    Config("wide", 24, 32, 2, 8, 32, 12, False),
+    Config("small", 6, 8, 2, 0, 8, 1, False),
+    Config("guard3", 12, 14, 3, 2, 14, 6, False),
+    Config("min_angle", 8, 3, 2, 0, 4, 2, False),
+    Config("guard1", 8, 10, 1, 0, 12, 4, False),
+    Config("narrow", 4, 8, 2, 0, 32, 0, False),
+    Config("vec_default", 16, 18, 2, 0, 16, 4, True),
+    Config("vec_fsa", 12, 18, 2, 0, 10, 0, True),
+    Config("vec_lsb_rm12", 16, 18, 2, 4, 16, 12, True),
+    Config("vec_small", 6, 8, 2, 0, 8, 1, True),
+    Config("vec_wide", 24, 32, 2, 8, 32, 12, True),
 )
 
 
@@ -69,8 +80,12 @@ def inputs(cfg: Config) -> Vectors:
     :return: x, y and a, of equal length
     :rtype: Vectors
     """
-    x, y, a = directed_vectors(cfg.xy_width, cfg.a_width)
     rng = np.random.default_rng(SEED)
+    if cfg.vectoring:
+        x, y = directed_vectoring_vectors(cfg.xy_width)
+        a = rng.integers(0, 2**cfg.a_width, x.size)
+    else:
+        x, y, a = directed_vectors(cfg.xy_width, cfg.a_width)
     limit = 2 ** (cfg.xy_width - 1)
     return (
         np.concatenate((x, rng.integers(-limit, limit, N_RANDOM))),
@@ -125,7 +140,12 @@ def make_hook(cfg: Config) -> Callable[[str], bool]:
     def hook(output_path: str) -> bool:
         out = Path(output_path)
         x, y, a = inputs(cfg)
-        x_o, y_o = model(build_library(out), cfg).rotate(x, y, a)
+        core = model(build_library(out), cfg)
+        if cfg.vectoring:
+            x_o, y_o, a_o = core.vector(x, y)
+        else:
+            x_o, y_o = core.rotate(x, y, a)
+            a_o = np.zeros_like(x_o)
         with (out / "stimulus.txt").open("w") as stimulus:
             for xv, yv, av in zip(x.tolist(), y.tolist(), a.tolist()):
                 stimulus.write(
@@ -133,8 +153,10 @@ def make_hook(cfg: Config) -> Callable[[str], bool]:
                     f"{binary(av, cfg.a_width)}\n")
         width = cfg.xy_width + cfg.guard_bits
         with (out / "expected.txt").open("w") as expected:
-            for xv, yv in zip(x_o.tolist(), y_o.tolist()):
-                expected.write(f"{binary(xv, width)} {binary(yv, width)}\n")
+            for xv, yv, av in zip(x_o.tolist(), y_o.tolist(), a_o.tolist()):
+                expected.write(
+                    f"{binary(xv, width)} {binary(yv, width)} "
+                    f"{binary(av, cfg.a_width)}\n")
         return True
 
     return hook
@@ -162,6 +184,7 @@ def main() -> None:
                     "LSB_BITS": cfg.lsb_bits,
                     "N_ITER": cfg.n_iter,
                     "RM_GAIN": cfg.rm_gain,
+                    "VECTORING": cfg.vectoring,
                     "EXPECTED_LATENCY": model(library, cfg).latency,
                     "N_SAMPLES": inputs(cfg)[0].size,
                 },
